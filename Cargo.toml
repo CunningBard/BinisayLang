@@ -1,0 +1,10 @@
+[workspace]
+
+members = [
+    "binrunner",
+    "bincore"
+]
+
+default-members = [
+    "binrunner"
+]
