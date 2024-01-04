@@ -1,75 +1,6 @@
 use std::collections::HashMap;
 use std::rc::Rc;
-
-
-
-#[derive(Clone, Debug)]
-pub enum Value {
-    Int(i32),
-    Float(f32),
-    Str(String),
-    Bool(bool),
-    List(Vec<Value>),
-
-    Object(Object)
-}
-
-impl Value {
-    pub fn is_object(&self) -> bool {
-        match self {
-            Value::Object(_) => true,
-            _ => false
-        }
-    }
-    pub fn as_int(&self) -> Option<i32> {
-        match self {
-            Value::Int(value) => Some(*value),
-            _ => None
-        }
-    }
-
-    pub fn as_float(&self) -> Option<f32> {
-        match self {
-            Value::Float(value) => Some(*value),
-            _ => None
-        }
-    }
-
-    pub fn as_str(&self) -> Option<&String> {
-        match self {
-            Value::Str(value) => Some(value),
-            _ => None
-        }
-    }
-
-    pub fn as_bool(&self) -> Option<bool> {
-        match self {
-            Value::Bool(value) => Some(*value),
-            _ => None
-        }
-    }
-
-    pub fn as_list(&self) -> Option<&Vec<Value>> {
-        match self {
-            Value::List(value) => Some(value),
-            _ => None
-        }
-    }
-
-    pub fn as_object(&self) -> Option<&Object> {
-        match self {
-            Value::Object(object) => Some(object),
-            _ => None
-        }
-    }
-
-    pub fn as_object_mut(&mut self) -> Option<&mut Object> {
-        match self {
-            Value::Object(object) => Some(object),
-            _ => None
-        }
-    }
-}
+use crate::data::value::Value;
 
 #[derive(Clone, Debug)]
 pub struct ObjectDescriptor {
@@ -128,7 +59,7 @@ impl ObjectBuilder {
     }
     pub fn build(&self, args: Vec<Value>) -> Object {
         if args.len() != self.descriptor.members.len() {
-            panic!("Wrong number of arguments for object {}", self.name);
+            panic!("Wrong number of arguments for data {}", self.name);
         }
 
         Object {
