@@ -1,58 +1,121 @@
 use std::collections::HashMap;
-use std::rc::Rc;
-use crate::executable::runnable::{FunctionSignature, Instruction};
-use crate::object::{Object, ObjectBuilder, ObjectDescriptor, Value};
+use crate::data::function::Callable;
+use crate::executable::runnable::{Instruction};
+use crate::data::object::{Object, ObjectBuilder};
+use crate::data::value::Value;
 
 pub struct Runtime {
     pub stack: Vec<Value>,
-    pub functions: HashMap<String, Rc<Box<FunctionSignature>>>,
-    pub heap: HashMap<String, Object>,
-    pub object_builders: HashMap<String, ObjectBuilder>
+    pub functions: HashMap<String, Callable>,
+    pub heap: HashMap<String, Value>,
+    pub object_builders: HashMap<String, ObjectBuilder>,
+    pub objects: HashMap<usize, Object>
 }
 
 impl Runtime {
     pub fn new() -> Runtime {
         let mut object_builders = HashMap::new();
 
-        macro_rules! literals_object_builder_add {
-            ($type:ty) => {
-                object_builders.insert(stringify!($type).to_string(),
-                    ObjectBuilder::new(stringify!($type).to_string(), ObjectDescriptor {
-                        name: stringify!($type).to_string(),
-                        members: HashMap::from([("__value__".to_string(), 0)])
-                    })
-                );
-            };
-        }
-
-        literals_object_builder_add!(int);
-        literals_object_builder_add!(float);
-        literals_object_builder_add!(str);
-        literals_object_builder_add!(bool);
-        literals_object_builder_add!(list);
-
+        // macro_rules! literals_object_builder_add {
+        //     ($type:ty) => {
+        //         object_builders.insert(stringify!($type).to_string(),
+        //             ObjectBuilder::new(stringify!($type).to_string(), ObjectDescriptor {
+        //                 name: stringify!($type).to_string(),
+        //                 members: HashMap::from([("__value__".to_string(), 0)])
+        //             })
+        //         );
+        //     };
+        // }
+        //
+        // literals_object_builder_add!(int);
+        // literals_object_builder_add!(float);
+        // literals_object_builder_add!(str);
+        // literals_object_builder_add!(bool);
+        // literals_object_builder_add!(list);
+        //
 
 
         Runtime {
             stack: Vec::new(),
             functions: HashMap::new(),
             heap: HashMap::new(),
-            object_builders
+            object_builders,
+            objects: Default::default(),
         }
     }
 
-    pub fn register_function(&mut self, name: String, function: Rc<Box<FunctionSignature>>) {
+    pub fn value_deref_object(&self, value: &Value) -> &Object {
+        match value {
+            Value::ObjectRef(object) => {
+                self.objects.get(&object).unwrap()
+            }
+            _ => {
+                panic!("Expected object")
+            }
+        }
+    }
+
+    pub fn value_deref_mut_object(&mut self, value: &Value) -> &mut Object {
+        match value {
+            Value::ObjectRef(object) => {
+                self.objects.get_mut(&object).unwrap()
+            }
+            _ => {
+                panic!("Expected object")
+            }
+        }
+    }
+
+
+    pub fn register_function(&mut self, name: String, function: Callable) {
         self.functions.insert(name, function);
     }
 
-    pub fn execute(&mut self, instruction: Instruction){
+    pub fn object_to_literal_value(&mut self, object: &Object) -> Value {
+        match object.descriptor.name.as_str() {
+            "int" | "float" | "str" | "bool" | "list" => {
+                object.get_member("__value__").clone()
+            }
+            _ => {
+                panic!("Cannot convert object {} to literal value", object.descriptor.name)
+            }
+        }
+    }
+
+    pub fn load_from_heap(&mut self, name: String) -> Value {
+        let names = name.split(".").collect::<Vec<&str>>();
+
+        let mut value = self.heap.get(names[0]).unwrap();
+
+        for i in 1..names.len() {
+            let res = self.value_deref_object(value);
+            value = res.get_member(names[i]);
+        }
+
+        value.clone()
+    }
+
+    pub fn execute(&mut self, instruction: Instruction) -> Option<Value> {
         match instruction {
             Instruction::Push { value } => {
                 self.stack.push(value);
             }
             Instruction::Call { function } => {
                 let function = self.functions.get(&function).unwrap().clone();
-                function(self);
+                match function {
+                    Callable::Function(func) => {
+                        for arg in func.args.iter().rev() {
+                            let value = self.stack.pop().unwrap();
+                            self.heap.insert(arg.clone(), value);
+                        }
+                        if let Some(value) = self.execute_instructions(func.instructions.clone()) {
+                            self.stack.push(value);
+                        }
+                    }
+                    Callable::NativeFunction(native_func) => {
+                        native_func(self);
+                    }
+                }
             }
             Instruction::Store { name } => {
                 let names = name.split(".").collect::<Vec<&str>>();
@@ -60,61 +123,26 @@ impl Runtime {
                 if names.len() == 1 {
                     let value = self.stack.pop().unwrap();
 
-                    match value {
-                        Value::Int(values) => {
-                            let object = self.object_builders.get("int").unwrap().build(vec![Value::Int(values)]);
-                            self.heap.insert(name, object);
-                        }
-                        Value::Float(values) => {
-                            let object = self.object_builders.get("float").unwrap().build(vec![Value::Float(values)]);
-                            self.heap.insert(name, object);
-                        }
-                        Value::Str(values) => {
-                            let object = self.object_builders.get("str").unwrap().build(vec![Value::Str(values)]);
-                            self.heap.insert(name, object);
-                        }
-                        Value::Bool(values) => {
-                            let object = self.object_builders.get("bool").unwrap().build(vec![Value::Bool(values)]);
-                            self.heap.insert(name, object);
-                        }
-                        Value::List(values) => {
-                            let object = self.object_builders.get("list").unwrap().build(vec![Value::List(values)]);
-                            self.heap.insert(name, object);
-                        }
-                        Value::Object(_) => {
-                            panic!("Expected literal value, not object")
-                        }
-                    }
+                    self.heap.insert(name, value);
                 } else {
-                    let mut object = self.heap.get_mut(names[0]).unwrap();
+                    let mut value = self.stack.pop().unwrap();
+
+                    let mut object_ref = self.heap.get(names[0]).unwrap().clone();
+
                     for i in 1..names.len() - 1 {
-                        object = object.get_member_mut(names[i]).as_object_mut().unwrap();
+                        let res = self.value_deref_object(&object_ref);
+                        object_ref = res.get_member(names[i]).clone();
                     }
-                    let value = self.stack.pop().unwrap();
-                    object.set_member(names[names.len() - 1], value);
+
+                    self.objects.get_mut(object_ref.as_object_ref().unwrap())
+                        .unwrap()
+                        .set_member(names[names.len() - 1], value);
                 }
 
             }
             Instruction::Load { name } => {
-                let names = name.split(".").collect::<Vec<&str>>();
-
-                if names.len() == 1 {
-                    let object = self.heap.get(&name).unwrap().clone();
-                    let value = object.get_member("__value__").clone();
-                    self.stack.push(value);
-                } else {
-                    let mut object = self.heap.get(names[0]).unwrap();
-                    for i in 1..names.len() - 1 {
-                        object = object.get_member(names[i]).as_object().unwrap();
-                    }
-                    let value = object.get_member(names[names.len() - 1]).clone();
-
-                    if value.is_object() {
-                        panic!("Expected literal value, not object")
-                    } else {
-                        self.stack.push(value);
-                    }
-                }
+                let value = self.load_from_heap(name);
+                self.stack.push(value);
             }
             Instruction::Add => {
                 let right = self.stack.pop().unwrap();
@@ -219,7 +247,21 @@ impl Runtime {
                     }
                 }
             }
+            Instruction::Ret => {
+                return Some(self.stack.pop().unwrap());
+            }
         }
+        None
+    }
+
+    pub fn execute_instructions(&mut self, instructions: Vec<Instruction>) -> Option<Value> {
+        for instruction in instructions {
+            if let Some(value) = self.execute(instruction) {
+                return Some(value);
+            }
+        }
+
+        None
     }
 
     pub fn run(&mut self, instructions: Vec<Instruction>) {

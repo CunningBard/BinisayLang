@@ -1,8 +1,8 @@
-use crate::executable::runtime::Runtime;
-use crate::object::{Value};
+use serde::{Deserialize, Serialize};
+use crate::data::value::Value;
 
-pub type FunctionSignature = dyn Fn(&mut Runtime);
 
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub enum Instruction {
     Push {
         value: Value
@@ -22,4 +22,5 @@ pub enum Instruction {
     Div,
     Mod,
     Pow,
+    Ret
 }
