@@ -16,6 +16,9 @@ pub enum Instruction {
     Load {
         name: String
     },
+    CreateObject {
+        name: String
+    },
     Add,
     Sub,
     Mul,

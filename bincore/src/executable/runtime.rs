@@ -9,6 +9,7 @@ pub struct Runtime {
     pub functions: HashMap<String, Callable>,
     pub heap: HashMap<String, Value>,
     pub object_builders: HashMap<String, ObjectBuilder>,
+    pub object_init_counter: usize,
     pub objects: HashMap<usize, Object>
 }
 
@@ -36,6 +37,7 @@ impl Runtime {
 
 
         Runtime {
+            object_init_counter: 0,
             stack: Vec::new(),
             functions: HashMap::new(),
             heap: HashMap::new(),
@@ -125,7 +127,7 @@ impl Runtime {
 
                     self.heap.insert(name, value);
                 } else {
-                    let mut value = self.stack.pop().unwrap();
+                    let value = self.stack.pop().unwrap();
 
                     let mut object_ref = self.heap.get(names[0]).unwrap().clone();
 
@@ -249,6 +251,23 @@ impl Runtime {
             }
             Instruction::Ret => {
                 return Some(self.stack.pop().unwrap());
+            }
+            Instruction::CreateObject { name } => {
+                let object_builder = self.object_builders.get(&name).unwrap();
+                let len = object_builder.descriptor.members.len();
+
+                let mut args = vec![];
+                for _ in 0..len {
+                    args.push(self.stack.pop().unwrap());
+                }
+
+                let object = object_builder.build(args);
+                let object_ref = self.object_init_counter;
+
+                self.object_init_counter += 1;
+
+                self.objects.insert(object_ref, object);
+                self.stack.push(Value::ObjectRef(object_ref));
             }
         }
         None
