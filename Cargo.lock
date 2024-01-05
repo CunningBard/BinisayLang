@@ -14,6 +14,10 @@ dependencies = [
 [[package]]
 name = "bincompiler"
 version = "0.1.0"
+dependencies = [
+ "bincode",
+ "serde",
+]
 
 [[package]]
 name = "bincore"
