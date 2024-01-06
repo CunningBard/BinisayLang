@@ -2,11 +2,11 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub enum Value {
-    Int(i32),
-    Float(f32),
+    Int(i64),
+    Float(f64),
     Str(String),
     Bool(bool),
-    List(Vec<Value>),
+    ListRef(usize),
 
     ObjectRef(usize)
 }
@@ -18,14 +18,14 @@ impl Value {
             _ => false
         }
     }
-    pub fn as_int(&self) -> Option<i32> {
+    pub fn as_int(&self) -> Option<i64> {
         match self {
             Value::Int(value) => Some(*value),
             _ => None
         }
     }
 
-    pub fn as_float(&self) -> Option<f32> {
+    pub fn as_float(&self) -> Option<f64> {
         match self {
             Value::Float(value) => Some(*value),
             _ => None
@@ -46,9 +46,9 @@ impl Value {
         }
     }
 
-    pub fn as_list(&self) -> Option<&Vec<Value>> {
+    pub fn as_list_ref(&self) -> Option<usize> {
         match self {
-            Value::List(value) => Some(value),
+            Value::ListRef(list) => Some(*list),
             _ => None
         }
     }
