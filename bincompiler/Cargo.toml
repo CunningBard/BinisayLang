@@ -6,5 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bincore = { path = "../bincore" }
 serde = { version = "1.0", features = ["derive"] }
 bincode = "1"
+pest = "2.7.6"
+pest_derive = "2.7.6"
