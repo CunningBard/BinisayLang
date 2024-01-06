@@ -1,0 +1,123 @@
+natural_newline = _{"␍␊" | "\r\n" | "\n"}
+explicit_newline = _{";"}
+new_line = _{natural_newline | explicit_newline}
+line_terminator = _{new_line | EOI}
+
+WHITESPACE = _{ " " | "\t" }
+float = @{ ("-")? ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+integer = @{ ("-")? ~ ASCII_DIGIT+ }
+bool = @{ "true" | "false" }
+string = @{ "\"" ~ (("\\\"" | !"\"") ~ ANY)* ~ "\"" }
+
+identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHA | ASCII_DIGIT | "_")* }
+
+number = @{ float | integer }
+
+single_line_comment = { "//" ~ (!new_line ~ ANY)* }
+multi_line_comment = { "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+
+identifier_with_dots = { identifier ~ ("." ~ identifier)+ }
+usable_identifier = { identifier_with_dots | identifier }
+
+function_call = {
+    usable_identifier ~ "(" ~ natural_newline* ~ (expr ~ "," ~ natural_newline*)* ~ (expr ~ natural_newline*)? ~ ")" ~ natural_newline*
+}
+eq_ops = { "==" | "!="  | ">=" | "<=" | ">" | "<"}
+sum_ops = { "+" | "-" }
+prod_ops = { "*" | "/" }
+
+expr = { sum ~ ((eq_ops) ~ sum)* }
+sum = { product ~ ((sum_ops) ~ product)* }
+product = { term ~ ((prod_ops) ~ term)* }
+term = {
+    (
+    string
+    | float
+    | integer
+    | bool
+    | function_call
+    | usable_identifier
+    | "(" ~ expr ~ ")"
+    )
+}
+
+variable_assignment = {
+    "deklara" ~ identifier ~ "=" ~ expr
+}
+
+variable_reassignment = {
+    usable_identifier ~ "=" ~ expr
+}
+
+
+return_statement = {
+    "return" ~ expr
+}
+
+if_statement = _{
+    "kung" ~ expr ~ block
+}
+
+else_if_statement = _{
+    "kung" ~ "lahi" ~ expr ~ block
+}
+
+else_statement = _{
+    "kana" ~ block
+}
+
+while_loop = {
+    "samtang" ~ expr ~ block
+}
+
+break_statement = {
+    "break"
+}
+
+continue_statement = {
+    "continue"
+}
+
+conditional = {
+    if_statement ~  natural_newline* ~
+    (else_if_statement ~ natural_newline*)*
+    ~ natural_newline* ~ (else_statement)?
+}
+
+statement = _{
+    variable_assignment ~ line_terminator
+    | variable_reassignment ~ line_terminator
+    | function_call ~ line_terminator
+    | return_statement ~ line_terminator
+    | conditional ~ natural_newline*
+    | while_loop ~ natural_newline*
+    | break_statement ~ line_terminator
+    | continue_statement ~ line_terminator
+    | function_definition ~ line_terminator
+    | single_line_comment ~ line_terminator
+    | multi_line_comment
+}
+
+function_definition = {
+    "proseso" ~ identifier
+    ~ "("
+    ~ (identifier ~ "," ~ natural_newline*)*
+    ~ (identifier ~ natural_newline*)?
+    ~ natural_newline*
+    ~ ")"
+    ~ block
+}
+
+
+block = {
+    "{" ~ new_line*
+    ~ (new_line* ~ statement ~ new_line*)*
+    ~ new_line* ~ "}"
+}
+
+
+instructions = _{
+    (new_line* ~ statement ~ new_line?)*
+}
+
+program = _{ SOI ~ instructions ~ EOI}
