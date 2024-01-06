@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
-use serde::{Deserialize, Serialize};
 use crate::data::value::Value;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub struct ObjectDescriptor {
     pub name: String,
     pub members: HashMap<String, usize>
@@ -45,7 +44,7 @@ impl Object  {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
 pub struct ObjectBuilder {
     pub name: String,
     pub descriptor: Rc<ObjectDescriptor>,
