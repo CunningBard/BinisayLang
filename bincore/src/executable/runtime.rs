@@ -1,48 +1,71 @@
 use std::collections::HashMap;
-use crate::data::function::Callable;
+use crate::data::function::{FunctionSignature};
 use crate::executable::runnable::{Instruction};
 use crate::data::object::{Object, ObjectBuilder};
 use crate::data::value::Value;
 
+macro_rules! bin_op_2 {
+    ($left:expr, $right:expr, $op:tt) => {
+        match ($left, $right) {
+            (Value::Int(left), Value::Int(right)) => {
+                Value::Int(left $op right)
+            }
+            (Value::Float(left), Value::Float(right)) => {
+                Value::Float(left $op right)
+            }
+            _ => {
+                panic!("Expected two values of the same type")
+            }
+        }
+    }
+}
+
+macro_rules! bin_op_2_comp {
+    ($left:expr, $right:expr, $op:tt) => {
+        match ($left, $right) {
+            (Value::Int(left), Value::Int(right)) => {
+                Value::Bool(left $op right)
+            }
+            (Value::Float(left), Value::Float(right)) => {
+                Value::Bool(left $op right)
+            }
+            _ => {
+                panic!("Expected two values of the same type")
+            }
+        }
+    }
+}
+
 pub struct Runtime {
+    pub instructions: Vec<Instruction>,
+    pub instruction_pointer: usize,
+
     pub stack: Vec<Value>,
-    pub functions: HashMap<String, Callable>,
+    pub functions: HashMap<String, FunctionSignature>,
+    pub call_stack: Vec<usize>,
     pub heap: HashMap<String, Value>,
     pub object_builders: HashMap<String, ObjectBuilder>,
     pub object_init_counter: usize,
-    pub objects: HashMap<usize, Object>
+    pub objects: HashMap<usize, Object>,
+    pub list_init_counter: usize,
+    pub lists: HashMap<usize, Vec<Value>>
 }
 
 impl Runtime {
     pub fn new() -> Runtime {
-        let mut object_builders = HashMap::new();
-
-        // macro_rules! literals_object_builder_add {
-        //     ($type:ty) => {
-        //         object_builders.insert(stringify!($type).to_string(),
-        //             ObjectBuilder::new(stringify!($type).to_string(), ObjectDescriptor {
-        //                 name: stringify!($type).to_string(),
-        //                 members: HashMap::from([("__value__".to_string(), 0)])
-        //             })
-        //         );
-        //     };
-        // }
-        //
-        // literals_object_builder_add!(int);
-        // literals_object_builder_add!(float);
-        // literals_object_builder_add!(str);
-        // literals_object_builder_add!(bool);
-        // literals_object_builder_add!(list);
-        //
-
-
         Runtime {
+            instructions: vec![Instruction::Nop],
+            instruction_pointer: 1,
+
             object_init_counter: 0,
             stack: Vec::new(),
             functions: HashMap::new(),
+            call_stack: vec![],
             heap: HashMap::new(),
-            object_builders,
+            object_builders: HashMap::new(),
             objects: Default::default(),
+            list_init_counter: 0,
+            lists: Default::default(),
         }
     }
 
@@ -69,7 +92,7 @@ impl Runtime {
     }
 
 
-    pub fn register_function(&mut self, name: String, function: Callable) {
+    pub fn register_function(&mut self, name: String, function: FunctionSignature) {
         self.functions.insert(name, function);
     }
 
@@ -102,22 +125,13 @@ impl Runtime {
             Instruction::Push { value } => {
                 self.stack.push(value);
             }
-            Instruction::Call { function } => {
-                let function = self.functions.get(&function).unwrap().clone();
-                match function {
-                    Callable::Function(func) => {
-                        for arg in func.args.iter().rev() {
-                            let value = self.stack.pop().unwrap();
-                            self.heap.insert(arg.clone(), value);
-                        }
-                        if let Some(value) = self.execute_instructions(func.instructions.clone()) {
-                            self.stack.push(value);
-                        }
-                    }
-                    Callable::NativeFunction(native_func) => {
-                        native_func(self);
-                    }
-                }
+            Instruction::ExternCall { function } => {
+                let function = match self.functions.get(&function){
+                    Some(function) => function,
+                    None => panic!("Function '{}' not found", function)
+                };
+
+                function(self);
             }
             Instruction::Store { name } => {
                 let names = name.split(".").collect::<Vec<&str>>();
@@ -160,9 +174,10 @@ impl Runtime {
                     (Value::Str(left), Value::Str(right)) => {
                         self.stack.push(Value::Str(left + &right));
                     }
-                    (Value::List(mut left), Value::List(right)) => {
-                        left.extend(right);
-                        self.stack.push(Value::List(left));
+                    (Value::ListRef(left), Value::ListRef(right)) => {
+                        let mut list = self.lists.get(&left).unwrap().clone();
+                        list.extend(self.lists.get(&right).unwrap().clone());
+                        self.stack.push(Value::ListRef(left));
                     }
                     _ => {
                         panic!("Expected two values of the same type")
@@ -172,66 +187,22 @@ impl Runtime {
             Instruction::Sub => {
                 let right = self.stack.pop().unwrap();
                 let left = self.stack.pop().unwrap();
-
-                match (left, right) {
-                    (Value::Int(left), Value::Int(right)) => {
-                        self.stack.push(Value::Int(left - right));
-                    }
-                    (Value::Float(left), Value::Float(right)) => {
-                        self.stack.push(Value::Float(left - right));
-                    }
-                    _ => {
-                        panic!("Expected two values of the same type")
-                    }
-                }
+                self.stack.push(bin_op_2!(left, right, -));
             }
             Instruction::Mul => {
                 let right = self.stack.pop().unwrap();
                 let left = self.stack.pop().unwrap();
-
-                match (left, right) {
-                    (Value::Int(left), Value::Int(right)) => {
-                        self.stack.push(Value::Int(left * right));
-                    }
-                    (Value::Float(left), Value::Float(right)) => {
-                        self.stack.push(Value::Float(left * right));
-                    }
-                    _ => {
-                        panic!("Expected two values of the same type")
-                    }
-                }
+                self.stack.push(bin_op_2!(left, right, *));
             }
             Instruction::Div => {
                 let right = self.stack.pop().unwrap();
                 let left = self.stack.pop().unwrap();
-
-                match (left, right) {
-                    (Value::Int(left), Value::Int(right)) => {
-                        self.stack.push(Value::Int(left / right));
-                    }
-                    (Value::Float(left), Value::Float(right)) => {
-                        self.stack.push(Value::Float(left / right));
-                    }
-                    _ => {
-                        panic!("Expected two values of the same type")
-                    }
-                }
+                self.stack.push(bin_op_2!(left, right, /));
             }
             Instruction::Mod => {
                 let right = self.stack.pop().unwrap();
                 let left = self.stack.pop().unwrap();
-
-                match (left, right) {
-                    (Value::Int(left), Value::Int(right)) => {
-                        self.stack.push(Value::Int(left % right));
-                    }
-                    (Value::Float(left), Value::Float(right)) => {
-                        self.stack.push(Value::Float(left % right));
-                    }
-                    _ => {
-                        panic!("Expected two values of the same type")
-                    }
-                }
+                self.stack.push(bin_op_2!(left, right, %));
             }
             Instruction::Pow => {
                 let right = self.stack.pop().unwrap();
@@ -250,7 +221,7 @@ impl Runtime {
                 }
             }
             Instruction::Ret => {
-                return Some(self.stack.pop().unwrap());
+                self.instruction_pointer = self.call_stack.pop().unwrap();
             }
             Instruction::CreateObject { name } => {
                 let object_builder = self.object_builders.get(&name).unwrap();
@@ -269,6 +240,156 @@ impl Runtime {
                 self.objects.insert(object_ref, object);
                 self.stack.push(Value::ObjectRef(object_ref));
             }
+            Instruction::Gt => {
+                let right = self.stack.pop().unwrap();
+                let left = self.stack.pop().unwrap();
+                self.stack.push(bin_op_2_comp!(left, right, >));
+            }
+            Instruction::Lt => {
+                let right = self.stack.pop().unwrap();
+                let left = self.stack.pop().unwrap();
+                self.stack.push(bin_op_2_comp!(left, right, <));
+            }
+            Instruction::Gte => {
+                let right = self.stack.pop().unwrap();
+                let left = self.stack.pop().unwrap();
+                self.stack.push(bin_op_2_comp!(left, right, >=));
+            }
+            Instruction::Lte => {
+                let right = self.stack.pop().unwrap();
+                let left = self.stack.pop().unwrap();
+                self.stack.push(bin_op_2_comp!(left, right, <=));
+            }
+            Instruction::Eq => {
+                let right = self.stack.pop().unwrap();
+                let left = self.stack.pop().unwrap();
+
+                match (left, right) {
+                    (Value::Int(left), Value::Int(right)) => {
+                        self.stack.push(Value::Bool(left == right));
+                    }
+                    (Value::Float(left), Value::Float(right)) => {
+                        self.stack.push(Value::Bool(left == right));
+                    }
+                    (Value::Str(left), Value::Str(right)) => {
+                        self.stack.push(Value::Bool(left == right));
+                    }
+                    (Value::Bool(left), Value::Bool(right)) => {
+                        self.stack.push(Value::Bool(left == right));
+                    }
+                    (Value::ListRef(left), Value::ListRef(right)) => {
+                        let left = self.lists.get(&left).unwrap();
+                        let right = self.lists.get(&right).unwrap();
+
+                        self.stack.push(Value::Bool(left == right));
+                    }
+                    _ => {
+                        panic!("Expected two values of the same type")
+                    }
+                }
+            }
+            Instruction::Neq => {
+                let right = self.stack.pop().unwrap();
+                let left = self.stack.pop().unwrap();
+
+                match (left, right) {
+                    (Value::Int(left), Value::Int(right)) => {
+                        self.stack.push(Value::Bool(left != right));
+                    }
+                    (Value::Float(left), Value::Float(right)) => {
+                        self.stack.push(Value::Bool(left != right));
+                    }
+                    (Value::Str(left), Value::Str(right)) => {
+                        self.stack.push(Value::Bool(left != right));
+                    }
+                    (Value::Bool(left), Value::Bool(right)) => {
+                        self.stack.push(Value::Bool(left != right));
+                    }
+                    (Value::ListRef(left), Value::ListRef(right)) => {
+                        let left = self.lists.get(&left).unwrap();
+                        let right = self.lists.get(&right).unwrap();
+
+                        self.stack.push(Value::Bool(left != right));
+                    }
+                    _ => {
+                        panic!("Expected two values of the same type")
+                    }
+                }
+            }
+            Instruction::And => {
+                let right = self.stack.pop().unwrap();
+                let left = self.stack.pop().unwrap();
+
+                match (left, right) {
+                    (Value::Bool(left), Value::Bool(right)) => {
+                        self.stack.push(Value::Bool(left && right));
+                    }
+                    _ => {
+                        panic!("Expected two values of the same type")
+                    }
+                }
+            }
+            Instruction::Or => {
+                let right = self.stack.pop().unwrap();
+                let left = self.stack.pop().unwrap();
+
+                match (left, right) {
+                    (Value::Bool(left), Value::Bool(right)) => {
+                        self.stack.push(Value::Bool(left || right));
+                    }
+                    _ => {
+                        panic!("Expected two values of the same type")
+                    }
+                }
+            }
+            Instruction::Not => {
+                let value = self.stack.pop().unwrap();
+
+                match value {
+                    Value::Bool(value) => {
+                        self.stack.push(Value::Bool(!value));
+                    }
+                    _ => {
+                        panic!("Expected two values of the same type")
+                    }
+                }
+            }
+            Instruction::Jump { address } => {
+                self.instruction_pointer = address;
+            }
+            Instruction::JumpIfTrue { address } => {
+                let value = self.stack.pop().unwrap();
+
+                match value {
+                    Value::Bool(value) => {
+                        if value {
+                            self.instruction_pointer = address;
+                        }
+                    }
+                    _ => {
+                        panic!("Expected two values of the same type")
+                    }
+                }
+            }
+            Instruction::JumpIfFalse { address } => {
+                let value = self.stack.pop().unwrap();
+
+                match value {
+                    Value::Bool(value) => {
+                        if !value {
+                            self.instruction_pointer = address;
+                        }
+                    }
+                    _ => {
+                        panic!("Expected two values of the same type")
+                    }
+                }
+            }
+            Instruction::Nop => {}
+            Instruction::Call { address } => {
+                self.call_stack.push(self.instruction_pointer);
+                self.instruction_pointer = address;
+            }
         }
         None
     }
@@ -283,8 +404,32 @@ impl Runtime {
         None
     }
 
+    pub fn run_as_function(&mut self, instructions: Vec<Instruction>) -> Option<Value> {
+        self.instructions.extend(instructions);
+
+        while self.instruction_pointer < self.instructions.len() {
+            let instruction = self.instructions[self.instruction_pointer].clone();
+            self.instruction_pointer += 1;
+
+            match self.execute(instruction){
+                Some(value) => {
+                    return Some(value);
+                }
+                None => {}
+
+            }
+        }
+
+        None
+    }
+
     pub fn run(&mut self, instructions: Vec<Instruction>) {
-        for instruction in instructions {
+        self.instructions.extend(instructions);
+
+        while self.instruction_pointer < self.instructions.len() {
+            let instruction = self.instructions[self.instruction_pointer].clone();
+            self.instruction_pointer += 1;
+
             self.execute(instruction);
         }
     }

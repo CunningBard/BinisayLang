@@ -11,8 +11,3 @@ pub struct Function {
 }
 
 pub type FunctionSignature = fn(&mut Runtime);
-
-pub enum Callable {
-    Function(Function),
-    NativeFunction(FunctionSignature)
-}
