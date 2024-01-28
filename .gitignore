@@ -1,7 +1,18 @@
+# rust build files
 /target
+
+# jetbrains ide files
 /.idea
 
-# performance data
+# performance data, run makesvg_linux.sh
 /perf.data
 /perf.data.old
 /flamegraph.svg
+
+# temporary test files
+/test.blc
+/test.bsl
+/test.py
+
+# un-needed runtime record script, use time command for linux, Measure-Command in powershell
+time_runtime.sh
