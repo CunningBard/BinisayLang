@@ -1,13 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Copy)]
 pub enum Value {
     Int(i64),
     Float(f64),
-    Str(String),
+    Char(char),
     Bool(bool),
     ListRef(usize),
-
+    StrRef(usize),
     ObjectRef(usize)
 }
 
@@ -32,9 +32,9 @@ impl Value {
         }
     }
 
-    pub fn as_str(&self) -> Option<&String> {
+    pub fn as_str(&self) -> Option<&usize> {
         match self {
-            Value::Str(value) => Some(value),
+            Value::StrRef(value) => Some(value),
             _ => None
         }
     }
@@ -56,6 +56,13 @@ impl Value {
     pub fn as_object_ref(&self) -> Option<&usize> {
         match self {
             Value::ObjectRef(object) => Some(object),
+            _ => None
+        }
+    }
+
+    pub fn as_char(&self) -> Option<char> {
+        match self {
+            Value::Char(char) => Some(*char),
             _ => None
         }
     }
