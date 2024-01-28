@@ -3,9 +3,14 @@
 members = [
     "binrunner",
     "bincore",
-    "bincompiler"
+    "bincompiler",
+    "arg_reader"
 ]
 
 default-members = [
     "binrunner"
 ]
+
+
+[profile.release]
+debug = true
