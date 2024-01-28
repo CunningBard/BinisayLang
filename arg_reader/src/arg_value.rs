@@ -1,3 +1,5 @@
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ArgValue {
     Bool(bool),
     String(String),
