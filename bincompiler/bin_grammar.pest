@@ -51,7 +51,7 @@ variable_reassignment = {
 
 
 return_statement = {
-    "return" ~ expr
+    "ibalik" ~ expr
 }
 
 if_statement = _{

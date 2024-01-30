@@ -99,7 +99,7 @@ fn bag_ong_list_nga_naay_sulod(runtime: &mut Runtime) {
     runtime.stack_push(Value::ListRef(list));
 }
 
-fn indeks_butngan(runtime: &mut Runtime) {
+fn index_set(runtime: &mut Runtime) {
     let obj = runtime.stack_pop().as_list_ref().unwrap();
     let index = runtime.stack_pop().as_int().unwrap();
     let value = runtime.stack_pop();
@@ -181,7 +181,7 @@ fn main() {
     register_function!(kuhaan);
     register_function!(bag_ong_lista);
     register_function!(bag_ong_list_nga_naay_sulod);
-    register_function!(indeks_butngan);
+    register_function!(index_set);
     register_function!(indeks_kuha);
     register_function!(katas_on);
 
