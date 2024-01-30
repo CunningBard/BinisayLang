@@ -1,4 +1,4 @@
-
+/// Represents a value that can be passed to a command line argument.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ArgValue {
     Bool(bool),
@@ -8,34 +8,57 @@ pub enum ArgValue {
 }
 
 impl ArgValue {
+    /// Convert the value to a boolean
+    ///
+    /// Returns `Some(true)` if the value is `true`,
+    /// `Some(false)` if the value is `false`,
+    /// and `None` if the value is not a boolean
+    ///
     pub fn as_bool(&self) -> Option<bool> {
         match self {
             ArgValue::Bool(value) => Some(*value),
-            _ => None
+            _ => None,
         }
     }
 
-    pub fn as_string(&self) -> Option<&String> {
+    /// Convert the value to a string
+    ///
+    /// Returns `Some(String)` if the value is a string,
+    /// and `None` if the value is not a string
+    pub fn as_string(&self) -> Option<String> {
         match self {
-            ArgValue::String(value) => Some(value),
-            _ => None
+            ArgValue::String(value) => Some(value.clone()),
+            _ => None,
         }
     }
 
+    /// Convert the value to an integer
+    ///
+    /// Returns `Some(i64)` if the value is an integer,
+    /// and `None` if the value is not an integer
     pub fn as_int(&self) -> Option<i64> {
         match self {
             ArgValue::Int(value) => Some(*value),
-            _ => None
+            _ => None,
         }
     }
 
+    /// Convert the value to a float
+    ///
+    /// Returns `Some(f64)` if the value is a float,
+    /// and `None` if the value is not a float
     pub fn as_float(&self) -> Option<f64> {
         match self {
             ArgValue::Float(value) => Some(*value),
-            _ => None
+            _ => None,
         }
     }
 
+    /// Parses the value into its corresponding Value Types
+    ///
+    ///
+    ///
+    /// Returns `ArgValue::Bool(boolean)` if
     pub fn parse(value: &str) -> Self {
         if value == "true" {
             Self::Bool(true)
