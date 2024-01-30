@@ -95,9 +95,25 @@ fix: Resolve null pointer issue
 feat: Introduce new feature [BREAKING CHANGE: Requires clients to update API calls with additional parameters] This commit adds a new feature for user authentication using OAuth2.
 ```
 
+## Commit Stacking
+
+Multiple commits can be stacked together to form a single commit message. Used when people forget to commit frequently
+
+### Example
+
+```
+feat: Add user authentication
+fix: Resolve null pointer issue
+feat: Introduce new feature [BREAKING CHANGE: Requires clients to update API calls with additional parameters] This commit adds a new feature for user authentication using OAuth2.
+style: Format code according to style guide
+chore: Refactor database connection handling
+```
+
 ## Notes
 
 - Keep the summary under 150 characters, if possible.
 - Provide as much detail as necessary in the `[Optional Details]` section.
+
+
 
 By adhering to this commit message format, we maintain a clean and informative version history, making it easier for team members to understand the evolution of the project.
