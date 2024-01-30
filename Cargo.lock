@@ -38,6 +38,7 @@ dependencies = [
 name = "binrunner"
 version = "0.1.0"
 dependencies = [
+ "arg_reader",
  "bincode",
  "bincore",
  "serde",

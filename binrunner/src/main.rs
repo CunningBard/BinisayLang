@@ -1,3 +1,4 @@
+use arg_reader::ArgReader;
 use bincore;
 use bincore::data::program_file::Program;
 use bincore::data::value::Value;
@@ -7,7 +8,7 @@ fn value_into_printable(value: Value, runtime: &mut Runtime) -> String {
     match value {
         Value::Int(value) => value.to_string(),
         Value::Float(value) => value.to_string(),
-        Value::StrRef(value) => runtime.strings[value].clone(),
+        Value::StrRef(value) => runtime.string_objects[&value].clone(),
         Value::Bool(value) => value.to_string(),
         Value::ListRef(value) => {
             let list = runtime.lists.get(&value).unwrap().clone();
@@ -41,7 +42,7 @@ fn value_into_printable(value: Value, runtime: &mut Runtime) -> String {
     }
 }
 
-fn println(runtime: &mut Runtime) {
+fn ipakita(runtime: &mut Runtime) {
     let len = runtime.stack_pop().as_int().unwrap();
     let mut values = Vec::new();
 
@@ -59,7 +60,7 @@ fn println(runtime: &mut Runtime) {
     );
 }
 
-fn push(runtime: &mut Runtime) {
+fn butngan(runtime: &mut Runtime) {
     let list = runtime.stack_pop();
     let value = runtime.stack_pop();
 
@@ -67,7 +68,7 @@ fn push(runtime: &mut Runtime) {
     list.push(value);
 }
 
-fn pop(runtime: &mut Runtime) {
+fn kuhaan(runtime: &mut Runtime) {
     let list = runtime.stack_pop();
 
     let list = runtime.lists.get_mut(&list.as_list_ref().unwrap()).unwrap();
@@ -75,7 +76,7 @@ fn pop(runtime: &mut Runtime) {
     runtime.stack_push(value);
 }
 
-fn new_list(runtime: &mut Runtime) {
+fn bag_ong_lista(runtime: &mut Runtime) {
     let list = runtime.list_init_counter;
     runtime.list_init_counter += 1;
 
@@ -83,7 +84,7 @@ fn new_list(runtime: &mut Runtime) {
     runtime.stack_push(Value::ListRef(list));
 }
 
-fn new_list_with_values(runtime: &mut Runtime) {
+fn bag_ong_list_nga_naay_sulod(runtime: &mut Runtime) {
     let list = runtime.list_init_counter;
     runtime.list_init_counter += 1;
 
@@ -98,24 +99,7 @@ fn new_list_with_values(runtime: &mut Runtime) {
     runtime.stack_push(Value::ListRef(list));
 }
 
-fn new_list_with_default_values(runtime: &mut Runtime) {
-    let list = runtime.list_init_counter;
-    runtime.list_init_counter += 1;
-
-    let len = runtime.stack_pop().as_int().unwrap();
-    let value = runtime.stack_pop();
-
-    let mut values = Vec::new();
-
-    for _ in 0..len {
-        values.push(value.clone());
-    }
-
-    runtime.lists.insert(list, values);
-    runtime.stack_push(Value::ListRef(list));
-}
-
-fn index_set(runtime: &mut Runtime) {
+fn indeks_butngan(runtime: &mut Runtime) {
     let obj = runtime.stack_pop().as_list_ref().unwrap();
     let index = runtime.stack_pop().as_int().unwrap();
     let value = runtime.stack_pop();
@@ -124,7 +108,7 @@ fn index_set(runtime: &mut Runtime) {
     list[index as usize] = value;
 }
 
-fn index_get(runtime: &mut Runtime) {
+fn indeks_kuha(runtime: &mut Runtime) {
     let list = runtime.stack_pop();
     let index = runtime.stack_pop().as_int().unwrap();
 
@@ -149,7 +133,7 @@ fn index_get(runtime: &mut Runtime) {
     }
 }
 
-fn len(runtime: &mut Runtime) {
+fn katas_on(runtime: &mut Runtime) {
     let value = runtime.stack_pop();
 
     match value {
@@ -168,26 +152,20 @@ fn len(runtime: &mut Runtime) {
 }
 
 fn main() {
-    let args = std::env::args().collect::<Vec<String>>();
-    let _program_name = args[0].clone();
-    let mut args_index = 1;
-    let mut input = "test.blc".to_string();
+    let args = ArgReader::new()
+        .register("file_path")
+        .bind_with_required(vec!["i", "input"])
+        .register("debug")
+        .bind(vec!["d", "debug"])
+        .bind_positional("file_path")
+        .read_args(std::env::args().skip(1).collect())
+        .unwrap();
 
-    while args_index < args.len() {
-        match args[args_index].as_str() {
-            "-i" => {
-                input = args[args_index + 1].clone();
-                args_index += 1;
-            }
-            option => {
-                panic!("Unknown option {}", option)
-            }
-        }
-
-        args_index += 1;
-    }
-
-    let input_file = std::fs::read(input).unwrap();
+    let file_path = match args.get_as_string("file_path") {
+        Some(value) => value,
+        None => panic!("No file path provided"),
+    };
+    let input_file = std::fs::read(file_path).unwrap();
     let program: Program = bincode::deserialize(&input_file).unwrap();
 
     let mut runtime = program.into_runtime();
@@ -198,15 +176,14 @@ fn main() {
         };
     }
 
-    register_function!(println);
-    register_function!(push);
-    register_function!(pop);
-    register_function!(new_list);
-    register_function!(new_list_with_values);
-    register_function!(new_list_with_default_values);
-    register_function!(index_set);
-    register_function!(index_get);
-    register_function!(len);
+    register_function!(ipakita);
+    register_function!(butngan);
+    register_function!(kuhaan);
+    register_function!(bag_ong_lista);
+    register_function!(bag_ong_list_nga_naay_sulod);
+    register_function!(indeks_butngan);
+    register_function!(indeks_kuha);
+    register_function!(katas_on);
 
     runtime.run()
 }

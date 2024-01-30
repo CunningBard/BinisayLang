@@ -71,11 +71,11 @@ while_loop = {
 }
 
 break_statement = {
-    "break"
+    "human"
 }
 
 continue_statement = {
-    "continue"
+    "tiwas"
 }
 
 conditional = {

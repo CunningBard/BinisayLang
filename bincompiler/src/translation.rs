@@ -2,18 +2,17 @@ use crate::ast::{Expression, Statement};
 use bincore::data::program_file::Program;
 use bincore::data::value::Value;
 use bincore::executable::runnable::Instruction;
-use std::collections::{HashMap};
+use std::collections::HashMap;
 
-const VARIADIC_FUNCTIONS: [&str; 1] = ["println"];
+const VARIADIC_FUNCTIONS: [&str; 1] = ["ipakita"];
 
-const EXTERNAL_FUNCTIONS: [&str; 1] = ["println"];
+const EXTERNAL_FUNCTIONS: [&str; 1] = ["ipakita"];
 
 pub enum IntermediateCode {
     Label(String),
     Call(String),
     Inst(Instruction),
     Jump(String),
-    JumpIfTrue(String),
     JumpIfFalse(String),
 }
 
@@ -31,9 +30,6 @@ impl IC {
     }
     pub fn jump(name: &str) -> IntermediateCode {
         IntermediateCode::Jump(name.to_string())
-    }
-    pub fn jump_if_true(name: &str) -> IntermediateCode {
-        IntermediateCode::JumpIfTrue(name.to_string())
     }
     pub fn jump_if_false(name: &str) -> IntermediateCode {
         IntermediateCode::JumpIfFalse(name.to_string())
@@ -394,11 +390,6 @@ impl BinLangTranslationUnit {
                         address: get_label(&*name),
                     });
                 }
-                IntermediateCode::JumpIfTrue(name) => {
-                    code.push(Instruction::JumpIfTrue {
-                        address: get_label(&*name),
-                    });
-                }
                 IntermediateCode::JumpIfFalse(name) => {
                     code.push(Instruction::JumpIfFalse {
                         address: get_label(&*name),
@@ -446,8 +437,6 @@ impl BinLangTranslationUnit {
         for i in 0..unit.string_refs.len() {
             strings.push(unit.string_ref_by_index.get(&i).unwrap().clone());
         }
-
-
 
         Program {
             instructions: inst,

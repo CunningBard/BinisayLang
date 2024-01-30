@@ -2,7 +2,7 @@ use crate::data::function::FunctionSignature;
 use crate::data::object::{Object, ObjectDescriptor};
 use crate::data::value::Value;
 use crate::executable::runnable::Instruction;
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 macro_rules! bin_op_2 {
@@ -107,7 +107,6 @@ impl Runtime {
         self.stack_pointer -= 1;
         let value = self.stack[self.stack_pointer];
         value
-
     }
 
     #[inline]
@@ -120,7 +119,8 @@ impl Runtime {
         let threshold = 10;
 
         if self.stack_pointer + threshold >= self.stack.len() {
-            self.stack.resize(self.stack.len() + threshold, Value::Int(0));
+            self.stack
+                .resize(self.stack.len() + threshold, Value::Int(0));
         }
 
         match instruction {
