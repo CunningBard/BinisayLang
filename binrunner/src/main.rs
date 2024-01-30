@@ -1,14 +1,13 @@
 use bincore;
 use bincore::data::program_file::Program;
-use bincore::executable::runtime::Runtime;
 use bincore::data::value::Value;
-
+use bincore::executable::runtime::Runtime;
 
 fn value_into_printable(value: Value, runtime: &mut Runtime) -> String {
     match value {
         Value::Int(value) => value.to_string(),
         Value::Float(value) => value.to_string(),
-        Value::Str(value) => value,
+        Value::StrRef(value) => runtime.strings[value].clone(),
         Value::Bool(value) => value.to_string(),
         Value::ListRef(value) => {
             let list = runtime.lists.get(&value).unwrap().clone();
@@ -29,44 +28,51 @@ fn value_into_printable(value: Value, runtime: &mut Runtime) -> String {
 
             for (name, index) in descriptor.members.iter() {
                 let value = object.members.get(*index).unwrap();
-                string.push(format!("{}: {}", name, value_into_printable(value.clone(), runtime)));
+                string.push(format!(
+                    "{}: {}",
+                    name,
+                    value_into_printable(value.clone(), runtime)
+                ));
             }
 
             format!("{} {{ {} }}", descriptor.name, string.join(", "))
         }
+        Value::Char(value) => value.to_string(),
     }
 }
 
 fn println(runtime: &mut Runtime) {
-    let len = runtime.stack.pop().unwrap().as_int().unwrap();
+    let len = runtime.stack_pop().as_int().unwrap();
     let mut values = Vec::new();
 
     for _ in 0..len {
-        values.push(runtime.stack.pop().unwrap());
+        values.push(runtime.stack_pop());
     }
 
-    println!("{}",
-             values.into_iter()
-                 .map(|value| value_into_printable(value, runtime))
-                 .collect::<Vec<String>>()
-                 .join(" ")
+    println!(
+        "{}",
+        values
+            .into_iter()
+            .map(|value| value_into_printable(value, runtime))
+            .collect::<Vec<String>>()
+            .join(" ")
     );
 }
 
-
-fn push(runtime: &mut Runtime){
-    let list = runtime.stack.pop().unwrap();
-    let value = runtime.stack.pop().unwrap();
+fn push(runtime: &mut Runtime) {
+    let list = runtime.stack_pop();
+    let value = runtime.stack_pop();
 
     let list = runtime.lists.get_mut(&list.as_list_ref().unwrap()).unwrap();
     list.push(value);
 }
 
 fn pop(runtime: &mut Runtime) {
-    let list = runtime.stack.pop().unwrap();
+    let list = runtime.stack_pop();
 
     let list = runtime.lists.get_mut(&list.as_list_ref().unwrap()).unwrap();
-    runtime.stack.push(list.pop().unwrap());
+    let value = list.pop().unwrap();
+    runtime.stack_push(value);
 }
 
 fn new_list(runtime: &mut Runtime) {
@@ -74,7 +80,7 @@ fn new_list(runtime: &mut Runtime) {
     runtime.list_init_counter += 1;
 
     runtime.lists.insert(list, Vec::new());
-    runtime.stack.push(Value::ListRef(list));
+    runtime.stack_push(Value::ListRef(list));
 }
 
 fn new_list_with_values(runtime: &mut Runtime) {
@@ -82,22 +88,22 @@ fn new_list_with_values(runtime: &mut Runtime) {
     runtime.list_init_counter += 1;
 
     let mut values = Vec::new();
-    let len = runtime.stack.pop().unwrap().as_int().unwrap();
+    let len = runtime.stack_pop().as_int().unwrap();
 
     for _ in 0..len {
-        values.push(runtime.stack.pop().unwrap());
+        values.push(runtime.stack_pop());
     }
 
     runtime.lists.insert(list, values);
-    runtime.stack.push(Value::ListRef(list));
+    runtime.stack_push(Value::ListRef(list));
 }
 
 fn new_list_with_default_values(runtime: &mut Runtime) {
     let list = runtime.list_init_counter;
     runtime.list_init_counter += 1;
 
-    let len = runtime.stack.pop().unwrap().as_int().unwrap();
-    let value = runtime.stack.pop().unwrap();
+    let len = runtime.stack_pop().as_int().unwrap();
+    let value = runtime.stack_pop();
 
     let mut values = Vec::new();
 
@@ -106,55 +112,60 @@ fn new_list_with_default_values(runtime: &mut Runtime) {
     }
 
     runtime.lists.insert(list, values);
-    runtime.stack.push(Value::ListRef(list));
+    runtime.stack_push(Value::ListRef(list));
 }
 
 fn index_set(runtime: &mut Runtime) {
-    let obj = runtime.stack.pop().unwrap().as_list_ref().unwrap();
-    let index = runtime.stack.pop().unwrap().as_int().unwrap();
-    let value = runtime.stack.pop().unwrap();
+    let obj = runtime.stack_pop().as_list_ref().unwrap();
+    let index = runtime.stack_pop().as_int().unwrap();
+    let value = runtime.stack_pop();
 
     let list = runtime.lists.get_mut(&obj).unwrap();
     list[index as usize] = value;
 }
 
 fn index_get(runtime: &mut Runtime) {
-    let list = runtime.stack.pop().unwrap();
-    let index = runtime.stack.pop().unwrap().as_int().unwrap();
+    let list = runtime.stack_pop();
+    let index = runtime.stack_pop().as_int().unwrap();
 
     match list {
         Value::ListRef(list) => {
             let list = runtime.lists.get(&list).unwrap();
-            runtime.stack.push(list[index as usize].clone());
+            runtime.stack_push(list[index as usize].clone());
         }
-        Value::Str(string) => {
-            let char = string.chars().nth(index as usize).unwrap();
-            runtime.stack.push(Value::Str(char.to_string()));
+        Value::StrRef(string_id) => {
+            let char = runtime
+                .string_objects
+                .get(&string_id)
+                .unwrap()
+                .chars()
+                .nth(index as usize)
+                .unwrap();
+            runtime.stack_push(Value::Char(char));
         }
         _ => {
             panic!("Cannot index non-list or non-object");
         }
-
     }
 }
 
 fn len(runtime: &mut Runtime) {
-    let value = runtime.stack.pop().unwrap();
+    let value = runtime.stack_pop();
 
     match value {
         Value::ListRef(list) => {
             let list = runtime.lists.get(&list).unwrap();
-            runtime.stack.push(Value::Int(list.len() as i64));
+            runtime.stack_push(Value::Int(list.len() as i64));
         }
-        Value::Str(string) => {
-            runtime.stack.push(Value::Int(string.len() as i64));
+        Value::StrRef(string) => {
+            let string = runtime.strings.get(string).unwrap();
+            runtime.stack_push(Value::Int(string.len() as i64));
         }
         _ => {
             panic!("Cannot get length of non-list or non-object");
         }
     }
 }
-
 
 fn main() {
     let args = std::env::args().collect::<Vec<String>>();
@@ -179,7 +190,7 @@ fn main() {
     let input_file = std::fs::read(input).unwrap();
     let program: Program = bincode::deserialize(&input_file).unwrap();
 
-    let mut runtime: Runtime = Runtime::new();
+    let mut runtime = program.into_runtime();
 
     macro_rules! register_function {
         ($func:expr) => {
@@ -197,11 +208,5 @@ fn main() {
     register_function!(index_get);
     register_function!(len);
 
-    for object_builder in program.object_builder.clone() {
-        let name = object_builder.name.clone();
-        let object_builder = object_builder.into_builder();
-        runtime.object_builders.insert(name, object_builder);
-    }
-
-    runtime.run(program.instructions)
+    runtime.run()
 }

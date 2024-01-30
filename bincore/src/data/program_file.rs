@@ -1,30 +1,35 @@
-use std::collections::HashMap;
-use std::rc::Rc;
-use serde::{Deserialize, Serialize};
-use crate::data::object::{ObjectBuilder, ObjectDescriptor};
+use crate::data::object::ObjectDescriptor;
+use crate::data::value::Value;
 use crate::executable::runnable::Instruction;
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ObjectBuilderLayout {
-    pub fields: Vec<String>,
-    pub members: HashMap<String, usize>,
-    pub name: String
-}
-
-impl ObjectBuilderLayout {
-    pub fn into_builder(self) -> ObjectBuilder {
-        ObjectBuilder {
-            name: self.name.clone(),
-            descriptor: Rc::new(ObjectDescriptor {
-                name: self.name.clone(),
-                members: self.members
-            })
-        }
-    }
-}
+use crate::executable::runtime::Runtime;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Program {
     pub instructions: Vec<Instruction>,
-    pub object_builder: Vec<ObjectBuilderLayout>
+    pub strings: Vec<String>,
+    pub heap_size: usize,
+
+    pub object_descriptor: Vec<ObjectDescriptor>,
+}
+
+impl Program {
+    pub fn into_runtime(self) -> Runtime {
+        let mut runtime = Runtime {
+            instructions: self.instructions,
+            strings: self.strings.clone(),
+            object_descriptor: self.object_descriptor,
+            heap: vec![Value::Int(0); self.heap_size],
+
+            ..Runtime::new()
+        };
+
+        for (index, string) in self.strings.iter().enumerate() {
+            runtime.string_objects.insert(index, string.clone());
+        }
+
+        runtime.string_object_init_counter = self.strings.len();
+
+        runtime
+    }
 }
