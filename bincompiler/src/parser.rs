@@ -1,6 +1,6 @@
-use pest::iterators::{Pair};
-use pest::Parser;
 use crate::ast::{Expression, Identifier, Statement};
+use pest::iterators::Pair;
+use pest::Parser;
 
 macro_rules! binary {
     ($left:expr, $right:expr, $op:ident) => {
@@ -11,12 +11,10 @@ macro_rules! binary {
     };
 }
 
-
 #[derive(Parser)]
 #[grammar = "bin_grammar.pest"]
 struct BinLangParser;
 pub struct BinLangParse;
-
 
 impl BinLangParse {
     pub fn identifier_with_dots(pair: Pair<Rule>) -> Identifier {
@@ -27,26 +25,19 @@ impl BinLangParse {
         }
 
         Identifier::DotIdentifier(identifiers)
-
     }
 
     pub fn identifier(pair: Pair<Rule>) -> Identifier {
-         Identifier::Single(pair.as_str().to_string())
+        Identifier::Single(pair.as_str().to_string())
     }
     pub fn usable_identifier(pair: Pair<Rule>) -> Identifier {
         let mut pairs = pair.into_inner();
         match pairs.next() {
-            Some(pair) => {
-                match pair.as_rule() {
-                    Rule::identifier => {
-                        Identifier::Single(pair.as_str().to_string())
-                    }
-                    Rule::identifier_with_dots => {
-                        Self::identifier_with_dots(pair)
-                    }
-                    _ => unimplemented!()
-                }
-            }
+            Some(pair) => match pair.as_rule() {
+                Rule::identifier => Identifier::Single(pair.as_str().to_string()),
+                Rule::identifier_with_dots => Self::identifier_with_dots(pair),
+                _ => unimplemented!(),
+            },
             None => {
                 unreachable!()
             }
@@ -61,10 +52,7 @@ impl BinLangParse {
             args.push(Self::expr(pair));
         }
 
-        Expression::FunctionCall {
-            func_name,
-            args,
-        }
+        Expression::FunctionCall { func_name, args }
     }
     pub fn term(pair: Pair<Rule>) -> Expression {
         let mut pairs = pair.into_inner();
@@ -73,14 +61,14 @@ impl BinLangParse {
         let current = pairs.next().unwrap();
 
         let left = match current.as_rule() {
-            Rule::string => Expression::String(current.as_str().to_string()[1..current.as_str().len()-1].to_string()),
+            Rule::string => Expression::String(
+                current.as_str().to_string()[1..current.as_str().len() - 1].to_string(),
+            ),
             Rule::float => Expression::Float(current.as_str().parse().unwrap()),
-            Rule::integer => Expression::Int(current.as_str().parse().unwrap()),
+            Rule::integer => Expression::Int(current.as_str().replace("_", "").parse().unwrap()),
             Rule::bool => Expression::Bool(current.as_str().parse().unwrap()),
             Rule::usable_identifier => Expression::Variable(Self::usable_identifier(current)),
-            Rule::function_call => {
-                Self::function_call_expr(current)
-            },
+            Rule::function_call => Self::function_call_expr(current),
             Rule::expr => Self::expr(current),
             // Rule::identifier => {
             //     // weird edge case, this should not be a possible rule in this context
@@ -88,7 +76,7 @@ impl BinLangParse {
             //     // FIXED: it was a bug in the parsing in the conditionals
             //     Expression::Variable(Self::identifier(current))
             // },
-            expr_rule => unimplemented!("{:?}", expr_rule)
+            expr_rule => unimplemented!("{:?}", expr_rule),
         };
 
         left
@@ -107,7 +95,7 @@ impl BinLangParse {
                 "/" => {
                     left = binary!(left, Self::term(pairs.next().unwrap()), Division);
                 }
-                _ => unimplemented!()
+                _ => unimplemented!(),
             }
         }
 
@@ -128,7 +116,7 @@ impl BinLangParse {
                 "-" => {
                     left = binary!(left, Self::product(pairs.next().unwrap()), Subtraction);
                 }
-                _ => unimplemented!()
+                _ => unimplemented!(),
             }
         }
 
@@ -136,7 +124,7 @@ impl BinLangParse {
     }
     pub fn expr(pair: Pair<Rule>) -> Expression {
         let mut pairs = pair.into_inner();
-        println!("{:?}", pairs);
+        // println!("{:?}", pairs);
 
         let current = pairs.next().unwrap();
 
@@ -162,7 +150,7 @@ impl BinLangParse {
                 ">=" => {
                     left = binary!(left, Self::sum(pairs.next().unwrap()), GreaterThanOrEqual);
                 }
-                _ => unimplemented!()
+                _ => unimplemented!(),
             }
         }
 
@@ -199,10 +187,7 @@ impl BinLangParse {
             args.push(Self::expr(pair));
         }
 
-        Statement::FunctionCall {
-            func_name,
-            args,
-        }
+        Statement::FunctionCall { func_name, args }
     }
 
     pub fn return_statement(pair: Pair<Rule>) -> Statement {
@@ -252,10 +237,7 @@ impl BinLangParse {
         let condition = Self::expr(pairs.next().unwrap());
         let body = Self::block(pairs.next().unwrap(), true, in_a_function);
 
-        Statement::WhileLoop {
-            condition,
-            body,
-        }
+        Statement::WhileLoop { condition, body }
     }
 
     pub fn function_definition(pair: Pair<Rule>) -> Statement {
@@ -270,7 +252,6 @@ impl BinLangParse {
 
             current = pairs.next().unwrap();
         }
-
 
         let body = Self::block(current, false, true);
 
@@ -294,15 +275,9 @@ impl BinLangParse {
 
     pub fn statement(pair: Pair<Rule>, in_a_loop: bool, in_a_function: bool) -> Option<Statement> {
         let data = match pair.as_rule() {
-            Rule::variable_assignment => {
-                Self::variable_assignment(pair)
-            }
-            Rule::variable_reassignment => {
-                Self::variable_reassignment(pair)
-            }
-            Rule::function_call => {
-                Self::function_call(pair)
-            }
+            Rule::variable_assignment => Self::variable_assignment(pair),
+            Rule::variable_reassignment => Self::variable_reassignment(pair),
+            Rule::function_call => Self::function_call(pair),
             Rule::return_statement => {
                 if !in_a_function {
                     return None;
@@ -310,12 +285,8 @@ impl BinLangParse {
 
                 Self::return_statement(pair)
             }
-            Rule::conditional => {
-                Self::conditional(pair, in_a_function)
-            }
-            Rule::while_loop => {
-                Self::while_loop(pair, in_a_function)
-            }
+            Rule::conditional => Self::conditional(pair, in_a_function),
+            Rule::while_loop => Self::while_loop(pair, in_a_function),
             Rule::break_statement => {
                 if !in_a_loop {
                     return None;
@@ -337,23 +308,20 @@ impl BinLangParse {
 
                 Self::function_definition(pair)
             }
-            Rule::EOI => {
-                Statement::EOI
-            }
-            Rule::single_line_comment |
-            Rule::multi_line_comment => {
+            Rule::EOI => Statement::EOI,
+            Rule::single_line_comment | Rule::multi_line_comment => {
                 Statement::Comment(pair.as_str().to_string())
             }
-            what => unreachable!("{:?}", what)
+            what => unreachable!("{:?}", what),
         };
 
         Some(data)
     }
 
     pub fn data(data: &str) -> (Vec<Statement>, Vec<Statement>) {
-        let pairs = match BinLangParser::parse(Rule::program, data){
+        let pairs = match BinLangParser::parse(Rule::program, data) {
             Ok(pairs) => pairs,
-            Err(e) => panic!("Error: {}", e)
+            Err(e) => panic!("Error: {}", e),
         };
 
         // for pair in pairs.clone() {
@@ -365,8 +333,16 @@ impl BinLangParse {
 
         for pair in pairs.clone() {
             match Self::statement(pair, false, false) {
-                Some(Statement::FunctionDeclaration { func_name, args, body }) => {
-                    functions.push(Statement::FunctionDeclaration { func_name, args, body });
+                Some(Statement::FunctionDeclaration {
+                    func_name,
+                    args,
+                    body,
+                }) => {
+                    functions.push(Statement::FunctionDeclaration {
+                        func_name,
+                        args,
+                        body,
+                    });
                 }
                 Some(statement) => {
                     statements.push(statement);
