@@ -5,7 +5,7 @@ line_terminator = _{new_line | EOI}
 
 WHITESPACE = _{ " " | "\t" }
 float = @{ ("-")? ~ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
-integer = @{ ("-")? ~ ASCII_DIGIT+ }
+integer = @{ ("-")? ~ (ASCII_DIGIT | "_")+ }
 bool = @{ "true" | "false" }
 string = @{ "\"" ~ (("\\\"" | !"\"") ~ ANY)* ~ "\"" }
 
