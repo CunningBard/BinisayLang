@@ -2,7 +2,7 @@ use crate::ast::{Expression, Statement};
 use bincore::data::program_file::Program;
 use bincore::data::value::Value;
 use bincore::executable::runnable::Instruction;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap};
 
 const VARIADIC_FUNCTIONS: [&str; 1] = ["println"];
 
