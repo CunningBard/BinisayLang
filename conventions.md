@@ -82,17 +82,17 @@ A commit message should follow the structure:
 
 ### New Feature
 ```
-[feat] Add user authentication
+feat: Add user authentication
 ```
 
 ### Bug Fix
 ```
-[fix] Resolve null pointer issue
+fix: Resolve null pointer issue
 ```
 
 ### Breaking Change
 ```
-[feat] Introduce new feature [BREAKING CHANGE: Requires clients to update API calls with additional parameters] This commit adds a new feature for user authentication using OAuth2.
+feat: Introduce new feature [BREAKING CHANGE: Requires clients to update API calls with additional parameters] This commit adds a new feature for user authentication using OAuth2.
 ```
 
 ## Notes
