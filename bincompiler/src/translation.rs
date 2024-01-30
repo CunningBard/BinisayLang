@@ -1,17 +1,12 @@
-use std::collections::HashMap;
+use crate::ast::{Expression, Statement};
 use bincore::data::program_file::Program;
 use bincore::data::value::Value;
 use bincore::executable::runnable::Instruction;
-use crate::ast::{Expression, Statement};
+use std::collections::{HashMap, VecDeque};
 
+const VARIADIC_FUNCTIONS: [&str; 1] = ["println"];
 
-const VARIADIC_FUNCTIONS: [&str; 1] = [
-    "println"
-];
-
-const EXTERNAL_FUNCTIONS: [&str; 1] = [
-    "println"
-];
+const EXTERNAL_FUNCTIONS: [&str; 1] = ["println"];
 
 pub enum IntermediateCode {
     Label(String),
@@ -50,6 +45,11 @@ pub struct BinLangTranslationUnit {
     pub functions: Vec<Statement>,
     pub code: Vec<IntermediateCode>,
 
+    pub string_refs: HashMap<String, usize>,
+    pub string_ref_by_index: HashMap<usize, String>,
+    pub variable_refs: HashMap<String, usize>,
+    pub variable_ref_by_index: HashMap<usize, String>,
+
     pub func_args: HashMap<String, Vec<String>>,
 
     conditional_label_count: usize,
@@ -57,6 +57,30 @@ pub struct BinLangTranslationUnit {
 }
 
 impl BinLangTranslationUnit {
+    pub fn reference_string(&mut self, string: &str) -> usize {
+        match self.string_refs.get(string) {
+            Some(value) => *value,
+            None => {
+                let index = self.string_refs.len();
+                self.string_refs.insert(string.to_string(), index);
+                self.string_ref_by_index.insert(index, string.to_string());
+                index
+            }
+        }
+    }
+
+    pub fn reference_variable(&mut self, variable: &str) -> usize {
+        match self.variable_refs.get(variable) {
+            Some(value) => *value,
+            None => {
+                let index = self.variable_refs.len();
+                self.variable_refs.insert(variable.to_string(), index);
+                self.variable_ref_by_index
+                    .insert(index, variable.to_string());
+                index
+            }
+        }
+    }
 
     pub fn expression(&mut self, expression: &Expression) -> Vec<IntermediateCode> {
         let mut code = vec![];
@@ -66,33 +90,33 @@ impl BinLangTranslationUnit {
                 code.append(&mut self.expression($left));
                 code.append(&mut self.expression($right));
                 code.push(IC::instruction(Instruction::$op));
-            }
+            };
         }
 
         match expression {
             Expression::Int(value) => {
                 code.push(IC::instruction(Instruction::Push {
-                    value: Value::Int(*value)
+                    value: Value::Int(*value),
                 }));
             }
             Expression::Float(value) => {
                 code.push(IC::instruction(Instruction::Push {
-                    value: Value::Float(*value)
+                    value: Value::Float(*value),
                 }));
             }
-            Expression::String(value) => {
+            Expression::String(str) => {
                 code.push(IC::instruction(Instruction::Push {
-                    value: Value::Str(value.to_string())
+                    value: Value::StrRef(self.reference_string(&*str.to_string())),
                 }));
             }
             Expression::Bool(value) => {
                 code.push(IC::instruction(Instruction::Push {
-                    value: Value::Bool(*value)
+                    value: Value::Bool(*value),
                 }));
             }
             Expression::Variable(variable) => {
                 code.push(IC::instruction(Instruction::Load {
-                    name: variable.to_string()
+                    address: self.reference_variable(&*variable.to_string()),
                 }));
             }
             Expression::FunctionCall { func_name, args } => {
@@ -133,19 +157,26 @@ impl BinLangTranslationUnit {
         code
     }
 
-    pub fn assignment(&mut self, identifier: &str, expression: &Expression) -> Vec<IntermediateCode> {
+    pub fn assignment(
+        &mut self,
+        identifier: &str,
+        expression: &Expression,
+    ) -> Vec<IntermediateCode> {
         let mut code = vec![];
 
         code.append(&mut self.expression(expression));
         code.push(IC::instruction(Instruction::Store {
-            name: identifier.to_string()
+            address: self.reference_variable(&*identifier),
         }));
 
         code
     }
-    pub fn function_call(&mut self, func_name: &str, args: &Vec<Expression>) -> Vec<IntermediateCode> {
+    pub fn function_call(
+        &mut self,
+        func_name: &str,
+        args: &Vec<Expression>,
+    ) -> Vec<IntermediateCode> {
         let mut code = vec![];
-
 
         for arg in args.iter().rev() {
             code.append(&mut self.expression(arg));
@@ -154,17 +185,17 @@ impl BinLangTranslationUnit {
         if EXTERNAL_FUNCTIONS.contains(&func_name) {
             if VARIADIC_FUNCTIONS.contains(&func_name) {
                 code.push(IC::instruction(Instruction::Push {
-                    value: Value::Int(args.len() as i64)
+                    value: Value::Int(args.len() as i64),
                 }));
             }
 
             code.push(IC::instruction(Instruction::ExternCall {
-                function: func_name.to_string()
+                string_id: self.reference_string(func_name),
             }));
         } else {
-            for arg_name in self.func_args.get(func_name).unwrap().iter().rev() {
+            for arg_name in self.func_args.get(func_name).unwrap().clone().iter().rev() {
                 code.push(IC::instruction(Instruction::Store {
-                    name: arg_name.to_string()
+                    address: self.reference_variable(arg_name),
                 }));
             }
             code.push(IC::call(format!("function_{}", func_name).as_str()));
@@ -185,8 +216,8 @@ impl BinLangTranslationUnit {
     pub fn conditional(
         &mut self,
         bodies: Vec<(Expression, Vec<Statement>)>,
-        else_body: Option<Vec<Statement>>
-    ) -> Vec<IntermediateCode>{
+        else_body: Option<Vec<Statement>>,
+    ) -> Vec<IntermediateCode> {
         let mut intermediate = vec![];
 
         let mut if_counts = 0;
@@ -222,8 +253,12 @@ impl BinLangTranslationUnit {
         intermediate.push(IC::label(&end_label));
         intermediate
     }
-    
-    pub fn while_loop(&mut self, condition: &Expression, body: &Vec<Statement>) -> Vec<IntermediateCode> {
+
+    pub fn while_loop(
+        &mut self,
+        condition: &Expression,
+        body: &Vec<Statement>,
+    ) -> Vec<IntermediateCode> {
         let mut intermediate = vec![];
 
         let condition_label = format!("while_{}", self.while_label_count);
@@ -246,30 +281,43 @@ impl BinLangTranslationUnit {
     pub fn statement(&mut self, statement: &Statement) -> Vec<IntermediateCode> {
         let mut intermediate = vec![];
         match statement {
-            Statement::Assignment { identifier, expression } => {
-                intermediate.append(&mut self.assignment(&*identifier.to_string(), expression))
-            }
-            Statement::Reassignment { identifier, expression } => {
-                intermediate.append(&mut self.assignment(&*identifier.to_string(), expression))
-            }
+            Statement::Assignment {
+                identifier,
+                expression,
+            } => intermediate.append(&mut self.assignment(&*identifier.to_string(), expression)),
+            Statement::Reassignment {
+                identifier,
+                expression,
+            } => intermediate.append(&mut self.assignment(&*identifier.to_string(), expression)),
             Statement::FunctionCall { func_name, args } => {
                 intermediate.append(&mut self.function_call(&*func_name.to_string(), args))
             }
-            Statement::FunctionDeclaration { func_name, args, body } => {
-                intermediate.append(&mut self.function_declaration(
+            Statement::FunctionDeclaration {
+                func_name,
+                args,
+                body,
+            } => intermediate.append(
+                &mut self.function_declaration(
                     &*func_name.to_string(),
-                    args.iter().map(|arg| arg.to_string()).collect::<Vec<String>>().as_ref(),
-                    body
-                ))
-            }
+                    args.iter()
+                        .map(|arg| arg.to_string())
+                        .collect::<Vec<String>>()
+                        .as_ref(),
+                    body,
+                ),
+            ),
             Statement::Conditional { body, else_body } => {
                 intermediate.append(&mut self.conditional(body.clone(), else_body.clone()))
             }
             Statement::WhileLoop { condition, body } => {
                 intermediate.append(&mut self.while_loop(condition, body))
             }
-            Statement::Break => { unimplemented!() }
-            Statement::Continue => { unimplemented!()}
+            Statement::Break => {
+                unimplemented!()
+            }
+            Statement::Continue => {
+                unimplemented!()
+            }
             Statement::EOI => {}
             Statement::Return(expression) => {
                 intermediate.append(&mut self.return_statement(expression))
@@ -280,7 +328,12 @@ impl BinLangTranslationUnit {
         intermediate
     }
 
-    pub fn function_declaration(&mut self, func_name: &str, args: &Vec<String>, body: &Vec<Statement>) -> Vec<IntermediateCode>{
+    pub fn function_declaration(
+        &mut self,
+        func_name: &str,
+        args: &Vec<String>,
+        body: &Vec<Statement>,
+    ) -> Vec<IntermediateCode> {
         let mut intermediate = vec![];
 
         self.func_args.insert(func_name.to_string(), args.clone());
@@ -295,9 +348,7 @@ impl BinLangTranslationUnit {
     }
 
     pub fn run(&mut self) -> Vec<Instruction> {
-        let mut intermediate = vec![
-            IC::jump("_start"),
-        ];
+        let mut intermediate = vec![IC::jump("_start")];
 
         for code in self.functions.clone().iter() {
             intermediate.extend(self.statement(code))
@@ -311,13 +362,12 @@ impl BinLangTranslationUnit {
 
         intermediate.push(IC::instruction(Instruction::Nop));
 
-
         let mut labels = HashMap::new();
         let mut counter = 1;
 
         let mut new_intermediate = vec![];
 
-        let mut code = vec![];
+        let mut code = vec![Instruction::Nop];
 
         for instruction in intermediate {
             match instruction {
@@ -331,9 +381,7 @@ impl BinLangTranslationUnit {
             }
         }
 
-        let get_label = |name: &str| {
-            *labels.get(&*name.to_string()).unwrap()
-        };
+        let get_label = |name: &str| *labels.get(&*name.to_string()).unwrap();
 
         for instruction in new_intermediate {
             match instruction {
@@ -343,22 +391,22 @@ impl BinLangTranslationUnit {
                 }
                 IntermediateCode::Jump(name) => {
                     code.push(Instruction::Jump {
-                        address: get_label(&*name)
+                        address: get_label(&*name),
                     });
                 }
                 IntermediateCode::JumpIfTrue(name) => {
                     code.push(Instruction::JumpIfTrue {
-                        address: get_label(&*name)
+                        address: get_label(&*name),
                     });
                 }
                 IntermediateCode::JumpIfFalse(name) => {
                     code.push(Instruction::JumpIfFalse {
-                        address: get_label(&*name)
+                        address: get_label(&*name),
                     });
                 }
                 IntermediateCode::Call(name) => {
                     code.push(Instruction::Call {
-                        address: get_label(&*name)
+                        address: get_label(&*name),
                     });
                 }
             }
@@ -375,13 +423,37 @@ impl BinLangTranslationUnit {
             func_args: Default::default(),
             conditional_label_count: 0,
             while_label_count: 0,
+
+            string_refs: Default::default(),
+            string_ref_by_index: Default::default(),
+
+            variable_refs: Default::default(),
+            variable_ref_by_index: Default::default(),
         };
 
-        let inst= unit.run();
+        for str in VARIADIC_FUNCTIONS {
+            unit.reference_string(str);
+        }
+
+        for str in EXTERNAL_FUNCTIONS {
+            unit.reference_string(str);
+        }
+
+        let inst = unit.run();
+
+        let mut strings = vec![];
+
+        for i in 0..unit.string_refs.len() {
+            strings.push(unit.string_ref_by_index.get(&i).unwrap().clone());
+        }
+
+
 
         Program {
             instructions: inst,
-            object_builder: vec![],
+            strings,
+            heap_size: unit.variable_refs.len(),
+            object_descriptor: vec![],
         }
     }
 }
