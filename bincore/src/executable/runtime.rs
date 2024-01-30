@@ -1,8 +1,9 @@
-use std::collections::HashMap;
-use crate::data::function::{FunctionSignature};
-use crate::executable::runnable::{Instruction};
-use crate::data::object::{Object, ObjectBuilder};
+use crate::data::function::FunctionSignature;
+use crate::data::object::{Object, ObjectDescriptor};
 use crate::data::value::Value;
+use crate::executable::runnable::Instruction;
+use std::collections::{HashMap};
+use std::rc::Rc;
 
 macro_rules! bin_op_2 {
     ($left:expr, $right:expr, $op:tt) => {
@@ -39,145 +40,152 @@ macro_rules! bin_op_2_comp {
 pub struct Runtime {
     pub instructions: Vec<Instruction>,
     pub instruction_pointer: usize,
+    pub strings: Vec<String>,
 
     pub stack: Vec<Value>,
+    pub stack_pointer: usize,
     pub functions: HashMap<String, FunctionSignature>,
     pub call_stack: Vec<usize>,
-    pub heap: HashMap<String, Value>,
-    pub object_builders: HashMap<String, ObjectBuilder>,
+    pub heap: Vec<Value>,
+
+    pub object_descriptor: Vec<ObjectDescriptor>,
     pub object_init_counter: usize,
     pub objects: HashMap<usize, Object>,
+
     pub list_init_counter: usize,
-    pub lists: HashMap<usize, Vec<Value>>
+    pub lists: HashMap<usize, Vec<Value>>,
+    pub string_object_init_counter: usize,
+    pub string_objects: HashMap<usize, String>,
 }
 
 impl Runtime {
     pub fn new() -> Runtime {
         Runtime {
-            instructions: vec![Instruction::Nop],
+            instructions: vec![],
             instruction_pointer: 1,
+            strings: vec![],
 
-            object_init_counter: 0,
             stack: Vec::new(),
+            stack_pointer: 0,
             functions: HashMap::new(),
             call_stack: vec![],
-            heap: HashMap::new(),
-            object_builders: HashMap::new(),
+            heap: vec![],
+
+            object_descriptor: Vec::new(),
+            object_init_counter: 0,
             objects: Default::default(),
+
             list_init_counter: 0,
             lists: Default::default(),
+            string_object_init_counter: 0,
+            string_objects: Default::default(),
         }
     }
 
-    pub fn value_deref_object(&self, value: &Value) -> &Object {
-        match value {
-            Value::ObjectRef(object) => {
-                self.objects.get(&object).unwrap()
-            }
-            _ => {
-                panic!("Expected object")
-            }
-        }
-    }
-
-    pub fn value_deref_mut_object(&mut self, value: &Value) -> &mut Object {
-        match value {
-            Value::ObjectRef(object) => {
-                self.objects.get_mut(&object).unwrap()
-            }
-            _ => {
-                panic!("Expected object")
-            }
-        }
-    }
-
-
+    #[inline]
     pub fn register_function(&mut self, name: String, function: FunctionSignature) {
         self.functions.insert(name, function);
     }
 
-    pub fn object_to_literal_value(&mut self, object: &Object) -> Value {
-        match object.descriptor.name.as_str() {
-            "int" | "float" | "str" | "bool" | "list" => {
-                object.get_member("__value__").clone()
-            }
-            _ => {
-                panic!("Cannot convert object {} to literal value", object.descriptor.name)
-            }
-        }
+    #[inline]
+    pub fn load_from_heap(&mut self, address: usize) -> Value {
+        self.heap[address]
     }
 
-    pub fn load_from_heap(&mut self, name: String) -> Value {
-        let names = name.split(".").collect::<Vec<&str>>();
+    #[inline]
+    pub fn new_string(&mut self, string: String) -> Value {
+        let string_id = self.string_object_init_counter;
+        self.string_object_init_counter += 1;
 
-        let mut value = self.heap.get(names[0]).unwrap();
+        self.string_objects.insert(string_id, string.clone());
 
-        for i in 1..names.len() {
-            let res = self.value_deref_object(value);
-            value = res.get_member(names[i]);
-        }
+        Value::StrRef(string_id)
+    }
 
-        value.clone()
+    #[inline]
+    pub fn stack_pop(&mut self) -> Value {
+        self.stack_pointer -= 1;
+        let value = self.stack[self.stack_pointer];
+        value
+
+    }
+
+    #[inline]
+    pub fn stack_push(&mut self, value: Value) {
+        self.stack[self.stack_pointer] = value;
+        self.stack_pointer += 1;
     }
 
     pub fn execute(&mut self, instruction: Instruction) -> Option<Value> {
+        let threshold = 10;
+
+        if self.stack_pointer + threshold >= self.stack.len() {
+            self.stack.resize(self.stack.len() + threshold, Value::Int(0));
+        }
+
         match instruction {
             Instruction::Push { value } => {
-                self.stack.push(value);
+                self.stack_push(value);
             }
-            Instruction::ExternCall { function } => {
-                let function = match self.functions.get(&function){
+            Instruction::ExternCall { string_id } => {
+                let name = &*self.strings[string_id];
+                let function = match self.functions.get(name) {
                     Some(function) => function,
-                    None => panic!("Function '{}' not found", function)
+                    None => panic!("Function '{}' not found", name),
                 };
 
                 function(self);
             }
-            Instruction::Store { name } => {
-                let names = name.split(".").collect::<Vec<&str>>();
-
-                if names.len() == 1 {
-                    let value = self.stack.pop().unwrap();
-
-                    self.heap.insert(name, value);
-                } else {
-                    let value = self.stack.pop().unwrap();
-
-                    let mut object_ref = self.heap.get(names[0]).unwrap().clone();
-
-                    for i in 1..names.len() - 1 {
-                        let res = self.value_deref_object(&object_ref);
-                        object_ref = res.get_member(names[i]).clone();
-                    }
-
-                    self.objects.get_mut(object_ref.as_object_ref().unwrap())
-                        .unwrap()
-                        .set_member(names[names.len() - 1], value);
-                }
-
+            Instruction::Store { address } => {
+                let value = self.stack_pop();
+                self.heap[address] = value;
             }
-            Instruction::Load { name } => {
-                let value = self.load_from_heap(name);
-                self.stack.push(value);
+            Instruction::Load { address } => {
+                let value = self.load_from_heap(address);
+                self.stack_push(value);
             }
             Instruction::Add => {
-                let right = self.stack.pop().unwrap();
-                let left = self.stack.pop().unwrap();
+                let right = self.stack_pop();
+                let left = self.stack_pop();
 
                 match (left, right) {
                     (Value::Int(left), Value::Int(right)) => {
-                        self.stack.push(Value::Int(left + right));
+                        self.stack_push(Value::Int(left + right));
                     }
                     (Value::Float(left), Value::Float(right)) => {
-                        self.stack.push(Value::Float(left + right));
+                        self.stack_push(Value::Float(left + right));
                     }
-                    (Value::Str(left), Value::Str(right)) => {
-                        self.stack.push(Value::Str(left + &right));
+                    (Value::Char(left), Value::Char(right)) => {
+                        let new_string = left.to_string() + &right.to_string();
+                        let str_ref = self.new_string(new_string);
+                        self.stack_push(str_ref);
+                    }
+                    (Value::StrRef(left), Value::StrRef(right)) => {
+                        let left = self.string_objects.get(&left).unwrap();
+                        let right = self.string_objects.get(&right).unwrap();
+
+                        let new_string = left.to_string() + right;
+                        let str_ref = self.new_string(new_string);
+                        self.stack_push(str_ref);
+                    }
+                    (Value::StrRef(left), Value::Char(right)) => {
+                        let left = self.string_objects.get(&left).unwrap();
+
+                        let new_string = left.to_string() + &right.to_string();
+                        let str_ref = self.new_string(new_string);
+                        self.stack_push(str_ref);
+                    }
+                    (Value::Char(left), Value::StrRef(right)) => {
+                        let right = self.string_objects.get(&right).unwrap();
+
+                        let new_string = left.to_string() + &right;
+                        let str_ref = self.new_string(new_string);
+                        self.stack_push(str_ref);
                     }
                     (Value::ListRef(left), Value::ListRef(right)) => {
                         let mut list = self.lists.get(&left).unwrap().clone();
                         list.extend(self.lists.get(&right).unwrap().clone());
-                        self.stack.push(Value::ListRef(left));
+                        self.stack_push(Value::ListRef(left));
                     }
                     _ => {
                         panic!("Expected two values of the same type")
@@ -185,35 +193,35 @@ impl Runtime {
                 }
             }
             Instruction::Sub => {
-                let right = self.stack.pop().unwrap();
-                let left = self.stack.pop().unwrap();
-                self.stack.push(bin_op_2!(left, right, -));
+                let right = self.stack_pop();
+                let left = self.stack_pop();
+                self.stack_push(bin_op_2!(left, right, -));
             }
             Instruction::Mul => {
-                let right = self.stack.pop().unwrap();
-                let left = self.stack.pop().unwrap();
-                self.stack.push(bin_op_2!(left, right, *));
+                let right = self.stack_pop();
+                let left = self.stack_pop();
+                self.stack_push(bin_op_2!(left, right, *));
             }
             Instruction::Div => {
-                let right = self.stack.pop().unwrap();
-                let left = self.stack.pop().unwrap();
-                self.stack.push(bin_op_2!(left, right, /));
+                let right = self.stack_pop();
+                let left = self.stack_pop();
+                self.stack_push(bin_op_2!(left, right, /));
             }
             Instruction::Mod => {
-                let right = self.stack.pop().unwrap();
-                let left = self.stack.pop().unwrap();
-                self.stack.push(bin_op_2!(left, right, %));
+                let right = self.stack_pop();
+                let left = self.stack_pop();
+                self.stack_push(bin_op_2!(left, right, %));
             }
             Instruction::Pow => {
-                let right = self.stack.pop().unwrap();
-                let left = self.stack.pop().unwrap();
+                let right = self.stack_pop();
+                let left = self.stack_pop();
 
                 match (left, right) {
                     (Value::Int(left), Value::Int(right)) => {
-                        self.stack.push(Value::Int(left.pow(right as u32)));
+                        self.stack_push(Value::Int(left.pow(right as u32)));
                     }
                     (Value::Float(left), Value::Float(right)) => {
-                        self.stack.push(Value::Float(left.powf(right)));
+                        self.stack_push(Value::Float(left.powf(right)));
                     }
                     _ => {
                         panic!("Expected two values of the same type")
@@ -223,65 +231,64 @@ impl Runtime {
             Instruction::Ret => {
                 self.instruction_pointer = self.call_stack.pop().unwrap();
             }
-            Instruction::CreateObject { name } => {
-                let object_builder = self.object_builders.get(&name).unwrap();
-                let len = object_builder.descriptor.members.len();
-
-                let mut args = vec![];
-                for _ in 0..len {
-                    args.push(self.stack.pop().unwrap());
-                }
-
-                let object = object_builder.build(args);
-                let object_ref = self.object_init_counter;
-
-                self.object_init_counter += 1;
-
-                self.objects.insert(object_ref, object);
-                self.stack.push(Value::ObjectRef(object_ref));
-            }
             Instruction::Gt => {
-                let right = self.stack.pop().unwrap();
-                let left = self.stack.pop().unwrap();
-                self.stack.push(bin_op_2_comp!(left, right, >));
+                let right = self.stack_pop();
+                let left = self.stack_pop();
+                self.stack_push(bin_op_2_comp!(left, right, >));
             }
             Instruction::Lt => {
-                let right = self.stack.pop().unwrap();
-                let left = self.stack.pop().unwrap();
-                self.stack.push(bin_op_2_comp!(left, right, <));
+                let right = self.stack_pop();
+                let left = self.stack_pop();
+                self.stack_push(bin_op_2_comp!(left, right, <));
             }
             Instruction::Gte => {
-                let right = self.stack.pop().unwrap();
-                let left = self.stack.pop().unwrap();
-                self.stack.push(bin_op_2_comp!(left, right, >=));
+                let right = self.stack_pop();
+                let left = self.stack_pop();
+                self.stack_push(bin_op_2_comp!(left, right, >=));
             }
             Instruction::Lte => {
-                let right = self.stack.pop().unwrap();
-                let left = self.stack.pop().unwrap();
-                self.stack.push(bin_op_2_comp!(left, right, <=));
+                let right = self.stack_pop();
+                let left = self.stack_pop();
+                self.stack_push(bin_op_2_comp!(left, right, <=));
             }
             Instruction::Eq => {
-                let right = self.stack.pop().unwrap();
-                let left = self.stack.pop().unwrap();
+                let right = self.stack_pop();
+                let left = self.stack_pop();
 
                 match (left, right) {
+                    (Value::Char(left), Value::Char(right)) => {
+                        self.stack_push(Value::Bool(left == right));
+                    }
                     (Value::Int(left), Value::Int(right)) => {
-                        self.stack.push(Value::Bool(left == right));
+                        self.stack_push(Value::Bool(left == right));
                     }
                     (Value::Float(left), Value::Float(right)) => {
-                        self.stack.push(Value::Bool(left == right));
+                        self.stack_push(Value::Bool(left == right));
                     }
-                    (Value::Str(left), Value::Str(right)) => {
-                        self.stack.push(Value::Bool(left == right));
+                    (Value::StrRef(left), Value::StrRef(right)) => {
+                        let left = self.string_objects.get(&left).unwrap();
+                        let right = self.string_objects.get(&right).unwrap();
+
+                        self.stack_push(Value::Bool(left == right));
                     }
                     (Value::Bool(left), Value::Bool(right)) => {
-                        self.stack.push(Value::Bool(left == right));
+                        self.stack_push(Value::Bool(left == right));
+                    }
+                    (Value::StrRef(left), Value::Char(right)) => {
+                        let left = self.string_objects.get(&left).unwrap();
+
+                        self.stack_push(Value::Bool(left == &right.to_string()));
+                    }
+                    (Value::Char(left), Value::StrRef(right)) => {
+                        let right = self.string_objects.get(&right).unwrap();
+
+                        self.stack_push(Value::Bool(&left.to_string() == right));
                     }
                     (Value::ListRef(left), Value::ListRef(right)) => {
                         let left = self.lists.get(&left).unwrap();
                         let right = self.lists.get(&right).unwrap();
 
-                        self.stack.push(Value::Bool(left == right));
+                        self.stack_push(Value::Bool(left == right));
                     }
                     _ => {
                         panic!("Expected two values of the same type")
@@ -289,27 +296,30 @@ impl Runtime {
                 }
             }
             Instruction::Neq => {
-                let right = self.stack.pop().unwrap();
-                let left = self.stack.pop().unwrap();
+                let right = self.stack_pop();
+                let left = self.stack_pop();
 
                 match (left, right) {
                     (Value::Int(left), Value::Int(right)) => {
-                        self.stack.push(Value::Bool(left != right));
+                        self.stack_push(Value::Bool(left != right));
                     }
                     (Value::Float(left), Value::Float(right)) => {
-                        self.stack.push(Value::Bool(left != right));
+                        self.stack_push(Value::Bool(left != right));
                     }
-                    (Value::Str(left), Value::Str(right)) => {
-                        self.stack.push(Value::Bool(left != right));
+                    (Value::StrRef(left), Value::StrRef(right)) => {
+                        let left = self.string_objects.get(&left).unwrap();
+                        let right = self.string_objects.get(&right).unwrap();
+
+                        self.stack_push(Value::Bool(left != right));
                     }
                     (Value::Bool(left), Value::Bool(right)) => {
-                        self.stack.push(Value::Bool(left != right));
+                        self.stack_push(Value::Bool(left != right));
                     }
                     (Value::ListRef(left), Value::ListRef(right)) => {
                         let left = self.lists.get(&left).unwrap();
                         let right = self.lists.get(&right).unwrap();
 
-                        self.stack.push(Value::Bool(left != right));
+                        self.stack_push(Value::Bool(left != right));
                     }
                     _ => {
                         panic!("Expected two values of the same type")
@@ -317,12 +327,12 @@ impl Runtime {
                 }
             }
             Instruction::And => {
-                let right = self.stack.pop().unwrap();
-                let left = self.stack.pop().unwrap();
+                let right = self.stack_pop();
+                let left = self.stack_pop();
 
                 match (left, right) {
                     (Value::Bool(left), Value::Bool(right)) => {
-                        self.stack.push(Value::Bool(left && right));
+                        self.stack_push(Value::Bool(left && right));
                     }
                     _ => {
                         panic!("Expected two values of the same type")
@@ -330,12 +340,12 @@ impl Runtime {
                 }
             }
             Instruction::Or => {
-                let right = self.stack.pop().unwrap();
-                let left = self.stack.pop().unwrap();
+                let right = self.stack_pop();
+                let left = self.stack_pop();
 
                 match (left, right) {
                     (Value::Bool(left), Value::Bool(right)) => {
-                        self.stack.push(Value::Bool(left || right));
+                        self.stack_push(Value::Bool(left || right));
                     }
                     _ => {
                         panic!("Expected two values of the same type")
@@ -343,11 +353,11 @@ impl Runtime {
                 }
             }
             Instruction::Not => {
-                let value = self.stack.pop().unwrap();
+                let value = self.stack_pop();
 
                 match value {
                     Value::Bool(value) => {
-                        self.stack.push(Value::Bool(!value));
+                        self.stack_push(Value::Bool(!value));
                     }
                     _ => {
                         panic!("Expected two values of the same type")
@@ -358,7 +368,7 @@ impl Runtime {
                 self.instruction_pointer = address;
             }
             Instruction::JumpIfTrue { address } => {
-                let value = self.stack.pop().unwrap();
+                let value = self.stack_pop();
 
                 match value {
                     Value::Bool(value) => {
@@ -372,7 +382,7 @@ impl Runtime {
                 }
             }
             Instruction::JumpIfFalse { address } => {
-                let value = self.stack.pop().unwrap();
+                let value = self.stack_pop();
 
                 match value {
                     Value::Bool(value) => {
@@ -390,44 +400,49 @@ impl Runtime {
                 self.call_stack.push(self.instruction_pointer);
                 self.instruction_pointer = address;
             }
-        }
-        None
-    }
-
-    pub fn execute_instructions(&mut self, instructions: Vec<Instruction>) -> Option<Value> {
-        for instruction in instructions {
-            if let Some(value) = self.execute(instruction) {
-                return Some(value);
+            Instruction::AccessMember { index } => {
+                let object = self.stack_pop();
+                let object = self.objects.get(&object.as_object_ref().unwrap()).unwrap();
+                let value = object.members[index].clone();
+                self.stack_push(value);
             }
-        }
+            Instruction::SetMember { index } => {
+                let value = self.stack_pop();
+                let object = self.stack_pop();
+                let object = self
+                    .objects
+                    .get_mut(&object.as_object_ref().unwrap())
+                    .unwrap();
+                object.members[index] = value;
+            }
+            Instruction::CreateObject { descriptor } => {
+                let object_id = self.object_init_counter;
+                self.object_init_counter += 1;
 
-        None
-    }
+                let descriptor = self.object_descriptor[descriptor].clone();
+                let mut members = vec![];
 
-    pub fn run_as_function(&mut self, instructions: Vec<Instruction>) -> Option<Value> {
-        self.instructions.extend(instructions);
-
-        while self.instruction_pointer < self.instructions.len() {
-            let instruction = self.instructions[self.instruction_pointer].clone();
-            self.instruction_pointer += 1;
-
-            match self.execute(instruction){
-                Some(value) => {
-                    return Some(value);
+                for _ in 0..descriptor.members.len() {
+                    let val = self.stack_pop();
+                    members.push(val);
                 }
-                None => {}
 
+                let object = Object {
+                    descriptor: Rc::new(descriptor),
+                    members,
+                };
+
+                self.objects.insert(object_id, object);
+                self.stack_push(Value::ObjectRef(object_id));
             }
         }
-
         None
     }
 
-    pub fn run(&mut self, instructions: Vec<Instruction>) {
-        self.instructions.extend(instructions);
-
-        while self.instruction_pointer < self.instructions.len() {
-            let instruction = self.instructions[self.instruction_pointer].clone();
+    pub fn run(&mut self) {
+        let instructions_length = self.instructions.len();
+        while self.instruction_pointer < instructions_length {
+            let instruction = self.instructions[self.instruction_pointer];
             self.instruction_pointer += 1;
 
             self.execute(instruction);
