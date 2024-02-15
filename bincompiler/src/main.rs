@@ -13,7 +13,7 @@ mod translation;
 fn main() {
     let args: ArgMap = ArgReader::new()
         .register("file")
-        .bind_with_required(vec!["f", "file"])
+        .bind_with_required(vec!["i", "input"])
         .register("debug")
         .bind(vec!["d", "debug"])
         .register("help")
@@ -26,7 +26,7 @@ fn main() {
         .unwrap();
 
     let input_file_name = args.get_as_string("file").unwrap_or_else(|| {
-        eprintln!("No file specified, use -f or --file");
+        eprintln!("No file specified, use -i or --input");
         std::process::exit(1);
     });
 
