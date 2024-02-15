@@ -9,10 +9,9 @@
 /perf.data.old
 /flamegraph.svg
 
-# temporary test files
-/test.blc
-/test.bsl
-/test.py
+# temporary files, place temp files here
+/temp
+/temporary
 
 # un-needed runtime record script, use time command for linux, Measure-Command in powershell
 time_runtime.sh
