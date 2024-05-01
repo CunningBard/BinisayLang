@@ -24,7 +24,7 @@ function_call = {
 }
 eq_ops = { "==" | "!="  | ">=" | "<=" | ">" | "<"}
 sum_ops = { "+" | "-" }
-prod_ops = { "*" | "/" }
+prod_ops = { "*" | "/" | "%"}
 
 expr = { sum ~ ((eq_ops) ~ sum)* }
 sum = { product ~ ((sum_ops) ~ product)* }

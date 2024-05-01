@@ -8,6 +8,7 @@ const VARIADIC_FUNCTIONS: [&str; 1] = ["ipakita"];
 
 const EXTERNAL_FUNCTIONS: [&str; 1] = ["ipakita"];
 
+#[derive(Debug)]
 pub enum IntermediateCode {
     Label(String),
     Call(String),
@@ -130,6 +131,9 @@ impl BinLangTranslationUnit {
             Expression::Division { left, right } => {
                 operation!(left, right, Div);
             }
+            Expression::Modulus { left, right } => {
+                operation!(left, right, Mod);
+            }
             Expression::Equal { left, right } => {
                 operation!(left, right, Eq);
             }
@@ -211,6 +215,7 @@ impl BinLangTranslationUnit {
 
     pub fn conditional(
         &mut self,
+        while_scope: usize,
         bodies: Vec<(Expression, Vec<Statement>)>,
         else_body: Option<Vec<Statement>>,
     ) -> Vec<IntermediateCode> {
@@ -229,7 +234,7 @@ impl BinLangTranslationUnit {
             intermediate.append(&mut self.expression(&condition));
             intermediate.push(IC::jump_if_false(&elif_label));
             for statement in body {
-                intermediate.append(&mut self.statement(&statement));
+                intermediate.append(&mut self.statement(while_scope, &statement));
             }
             intermediate.push(IC::jump(&end_label));
             intermediate.push(IC::label(&elif_label));
@@ -237,7 +242,7 @@ impl BinLangTranslationUnit {
 
         if let Some(body) = else_body {
             for statement in body {
-                intermediate.append(&mut self.statement(&statement));
+                intermediate.append(&mut self.statement(while_scope, &statement));
             }
         } else {
             let label = intermediate.pop().unwrap();
@@ -259,6 +264,7 @@ impl BinLangTranslationUnit {
 
         let condition_label = format!("while_{}", self.while_label_count);
         let end_label = format!("end_while_{}", self.while_label_count);
+        let count = self.while_label_count;
         self.while_label_count += 1;
 
         intermediate.push(IC::label(&condition_label));
@@ -266,7 +272,7 @@ impl BinLangTranslationUnit {
         intermediate.push(IC::jump_if_false(&end_label));
 
         for statement in body {
-            intermediate.append(&mut self.statement(statement));
+            intermediate.append(&mut self.statement(count, statement));
         }
 
         intermediate.push(IC::jump(&condition_label));
@@ -274,7 +280,7 @@ impl BinLangTranslationUnit {
 
         intermediate
     }
-    pub fn statement(&mut self, statement: &Statement) -> Vec<IntermediateCode> {
+    pub fn statement(&mut self, while_scope: usize, statement: &Statement) -> Vec<IntermediateCode> {
         let mut intermediate = vec![];
         match statement {
             Statement::Assignment {
@@ -294,6 +300,7 @@ impl BinLangTranslationUnit {
                 body,
             } => intermediate.append(
                 &mut self.function_declaration(
+                    while_scope,
                     &*func_name.to_string(),
                     args.iter()
                         .map(|arg| arg.to_string())
@@ -303,16 +310,16 @@ impl BinLangTranslationUnit {
                 ),
             ),
             Statement::Conditional { body, else_body } => {
-                intermediate.append(&mut self.conditional(body.clone(), else_body.clone()))
+                intermediate.append(&mut self.conditional(while_scope, body.clone(), else_body.clone()))
             }
             Statement::WhileLoop { condition, body } => {
                 intermediate.append(&mut self.while_loop(condition, body))
             }
             Statement::Break => {
-                unimplemented!()
+                intermediate.push(IC::jump(format!("end_while_{}", while_scope).as_str()))
             }
             Statement::Continue => {
-                unimplemented!()
+                intermediate.push(IC::jump(format!("while_{}", while_scope).as_str()))
             }
             Statement::EOI => {}
             Statement::Return(expression) => {
@@ -326,6 +333,7 @@ impl BinLangTranslationUnit {
 
     pub fn function_declaration(
         &mut self,
+        while_scope: usize,
         func_name: &str,
         args: &Vec<String>,
         body: &Vec<Statement>,
@@ -337,7 +345,7 @@ impl BinLangTranslationUnit {
         intermediate.push(IC::label(format!("function_{}", func_name).as_str()));
 
         for statement in body {
-            intermediate.append(&mut self.statement(statement));
+            intermediate.append(&mut self.statement(while_scope, statement));
         }
 
         intermediate
@@ -347,13 +355,13 @@ impl BinLangTranslationUnit {
         let mut intermediate = vec![IC::jump("_start")];
 
         for code in self.functions.clone().iter() {
-            intermediate.extend(self.statement(code))
+            intermediate.extend(self.statement(0, code))
         }
 
         intermediate.push(IC::label("_start"));
 
         for code in self.statements.clone().iter() {
-            intermediate.extend(self.statement(code))
+            intermediate.extend(self.statement(0, code))
         }
 
         intermediate.push(IC::instruction(Instruction::Nop));
@@ -368,7 +376,7 @@ impl BinLangTranslationUnit {
         for instruction in intermediate {
             match instruction {
                 IntermediateCode::Label(name) => {
-                    labels.insert(name, counter);
+                    labels.insert(name.to_string(), counter);
                 }
                 _ => {
                     counter += 1;
@@ -377,7 +385,7 @@ impl BinLangTranslationUnit {
             }
         }
 
-        let get_label = |name: &str| *labels.get(&*name.to_string()).unwrap();
+        let get_label = |name: &str| *labels.get(name).unwrap();
 
         for instruction in new_intermediate {
             match instruction {

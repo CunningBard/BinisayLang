@@ -95,6 +95,9 @@ impl BinLangParse {
                 "/" => {
                     left = binary!(left, Self::term(pairs.next().unwrap()), Division);
                 }
+                "%" => {
+                    left = binary!(left, Self::term(pairs.next().unwrap()), Modulus);
+                }
                 _ => unimplemented!(),
             }
         }

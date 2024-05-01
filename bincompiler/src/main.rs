@@ -47,6 +47,8 @@ fn main() {
         format!("{}.blc", file_name)
     });
 
+    println!("Writing to file: {}", output);
+
     let mut file = fs::File::create(output).unwrap();
     bincode::serialize_into(&mut file, &program).unwrap();
 

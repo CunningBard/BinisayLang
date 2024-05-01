@@ -43,6 +43,10 @@ pub enum Expression {
         left: Box<Expression>,
         right: Box<Expression>,
     },
+    Modulus {
+        left: Box<Expression>,
+        right: Box<Expression>,
+    },
     Equal {
         left: Box<Expression>,
         right: Box<Expression>,
