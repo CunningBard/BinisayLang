@@ -5,6 +5,10 @@ use crate::executable::runnable::Instruction;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+
+const STACK_SIZE: usize = 1024;
+const STACK_THRESHOLD: usize = 10;
+
 macro_rules! bin_op_2 {
     ($left:expr, $right:expr, $op:tt) => {
         match ($left, $right) {
@@ -65,7 +69,7 @@ impl Runtime {
             instruction_pointer: 1,
             strings: vec![],
 
-            stack: Vec::new(),
+            stack: vec![Value::Int(0); STACK_SIZE],
             stack_pointer: 0,
             functions: HashMap::new(),
             call_stack: vec![],
@@ -115,12 +119,11 @@ impl Runtime {
         self.stack_pointer += 1;
     }
 
+    #[inline]
     pub fn execute(&mut self, instruction: Instruction) -> Option<Value> {
-        let threshold = 10;
-
-        if self.stack_pointer + threshold >= self.stack.len() {
+        if self.stack_pointer + STACK_THRESHOLD >= self.stack.len() {
             self.stack
-                .resize(self.stack.len() + threshold, Value::Int(0));
+                .resize(self.stack.len() + STACK_SIZE, Value::Int(0));
         }
 
         match instruction {
